@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Writing Assistant v18.5 - GG Languages Academy</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+    <script src="https://unpkg.com/file-saver/dist/FileSaver.min.js"></script>
+    <style>
+        :root {
+            --gg: #1e4620; --acc: #2e7d32; --light: #e8f5e9;
+            --bg: #f0f4f8; --surface: #ffffff; --border: #d1d5db;
+            --text: #1f2937; --sub: #6b7280; --radius: 10px;
+            --red: #dc2626; --blue: #2563eb; --purple: #7c3aed;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px 20px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+
+        /* HEADER */
+        .app-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; padding-bottom: 18px; border-bottom: 2px solid #e5e7eb; }
+        .logo-img { height: 52px; filter: drop-shadow(0 2px 6px rgba(30,70,32,0.18)); }
+        .app-title h1 { margin: 0; font-size: 1.45rem; font-weight: 800; color: var(--gg); letter-spacing: -0.4px; }
+        .app-title .sub { font-size: 0.8rem; color: var(--sub); font-weight: 500; margin-top: 2px; }
+        .version-chip { display: inline-block; background: var(--light); color: var(--acc); font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 20px; margin-left: 8px; border: 1px solid #a5d6a7; }
+
+        /* CARD */
+        .card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 28px 32px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.06), 0 10px 24px -4px rgb(0 0 0 / 0.07); margin-bottom: 20px; }
+
+        /* API STATUS */
+        .key-orb { margin-left: auto; width: 13px; height: 13px; border-radius: 50%; border: none;
+                   padding: 0; cursor: pointer; flex-shrink: 0; background: #86c98a;
+                   transition: transform 0.15s, box-shadow 0.15s; }
+        .key-orb:hover { transform: scale(1.35); }
+        .key-orb.missing { background: #f59e0b; box-shadow: 0 0 0 0 rgba(245,158,11,0.7);
+                           animation: orbPulse 1.9s infinite; }
+        @keyframes orbPulse { 70% { box-shadow: 0 0 0 9px rgba(245,158,11,0); }
+                              100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); } }
+        .key-form { display: none; border: 1.5px solid #d1d5db; border-radius: 12px;
+                    padding: 18px; margin-bottom: 20px; background: #fcfdfc; }
+        .key-form.open { display: block; }
+        .key-form-label { font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase;
+                          letter-spacing: 1px; margin-bottom: 8px; }
+        .key-form-hint { font-size: 0.76rem; color: #64748b; font-weight: 500; line-height: 1.6; margin-bottom: 12px; }
+        .key-form-hint b { color: var(--acc); font-weight: 700; }
+        .key-row { display: flex; gap: 10px; }
+        .key-row input { flex: 1; padding: 12px 14px; border: 1.5px solid #d1d5db; border-radius: 9px;
+                         font-family: inherit; font-size: 0.92rem; }
+        .key-save { padding: 0 22px; border: none; border-radius: 9px; background: var(--acc);
+                    color: #fff; font-family: inherit; font-weight: 800; font-size: 0.85rem; cursor: pointer; }
+        .key-err { color: #dc2626; font-size: 0.76rem; font-weight: 600; margin-top: 9px; display: none; }
+        .key-err.show { display: block; }
+        .api-status { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: #f0fdf4; border: 1px solid #a5d6a7; border-radius: 8px; margin-bottom: 20px; }
+        .api-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,0.2)} 50%{box-shadow:0 0 0 6px rgba(34,197,94,0.06)} }
+        .api-status span { font-size: 0.76rem; font-weight: 600; color: #166534; }
+
+        /* LEVEL TABS */
+        .tabs-wrap { margin-bottom: 22px; }
+        .tabs-label { font-size: 0.7rem; font-weight: 800; color: var(--sub); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .tabs-row { display: flex; gap: 10px; }
+        .tab-btn {
+            flex: 1; padding: 14px 10px; border: 2px solid var(--border); border-radius: 10px;
+            background: white; cursor: pointer; font-family: inherit; transition: all 0.2s;
+            text-align: center;
+        }
+        .tab-btn:hover:not(.active) { border-color: #9ca3af; background: #f9fafb; }
+        .tab-btn.active { border-color: var(--acc); background: var(--light); }
+        .tab-icon { font-size: 1.4rem; margin-bottom: 6px; display: block; }
+        .tab-name { font-size: 0.88rem; font-weight: 800; color: var(--gg); display: block; }
+        .tab-desc { font-size: 0.7rem; color: var(--sub); display: block; margin-top: 3px; line-height: 1.4; }
+        .tab-btn.active .tab-desc { color: var(--acc); }
+
+        /* CONTROLS */
+        .controls-row { display: flex; gap: 16px; margin-bottom: 16px; align-items: flex-end; }
+        .control-group { display: flex; flex-direction: column; flex: 1; }
+        .field-label { font-size: 0.7rem; font-weight: 800; color: var(--sub); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+        input[type="text"] { padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.92rem; font-family: inherit; background: #fdfdfd; color: var(--text); transition: border-color 0.15s; height: 42px; }
+        input[type="text"]:focus { outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
+
+        /* TEXTAREA */
+        textarea {
+            width: 100%; min-height: 200px; padding: 16px; border: 1.5px solid var(--border);
+            border-radius: 8px; font-size: 0.97rem; font-family: inherit; line-height: 1.7;
+            color: var(--text); resize: vertical; transition: border-color 0.15s; background: #fdfdfd;
+        }
+        textarea:focus { outline: none; border-color: var(--acc); box-shadow: 0 0 0 3px rgba(46,125,50,0.1); }
+
+        /* ACTION BAR */
+        .action-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+        .status-text { font-size: 0.82rem; color: var(--sub); font-style: italic; display: flex; align-items: center; gap: 7px; }
+        .status-text .spin { width: 14px; height: 14px; border: 2px solid #d1d5db; border-top-color: var(--acc); border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+        .status-text.loading .spin { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .btn-row { display: flex; gap: 10px; }
+        .btn-check {
+            padding: 11px 24px; background: var(--acc); color: white; border: none;
+            border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 0.9rem;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.18s;
+        }
+        .btn-check:hover:not(:disabled) { background: #1b5e20; transform: translateY(-1px); }
+        .btn-check:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-docx {
+            padding: 11px 20px; background: white; color: #1d4ed8; border: 1.5px solid #bfdbfe;
+            border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 0.9rem;
+            cursor: pointer; display: none; align-items: center; gap: 8px; transition: all 0.18s;
+        }
+        .btn-docx:hover { background: #eff6ff; transform: translateY(-1px); }
+        .btn-docx.visible { display: flex; }
+
+        /* RESULTS */
+        .results-area { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .result-panel { background: white; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; min-height: 420px; }
+        .panel-header { padding: 11px 18px; font-weight: 800; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+        .header-err  { background: #fef2f2; color: #991b1b; }
+        .header-corr { background: #f0fdf4; color: #166534; }
+        .panel-body { padding: 22px 24px; flex: 1; overflow-y: auto; line-height: 1.85; font-size: 0.97rem; color: #374151; white-space: pre-wrap; }
+
+        /* DIFF STYLES */
+        .del { color: #dc2626; font-weight: bold; text-decoration: line-through; background: #fef2f2; border-radius: 2px; padding: 0 1px; }
+        .ins { color: #2563eb; font-weight: bold; text-decoration: underline; background: #eff6ff; border-radius: 2px; padding: 0 1px; }
+
+        /* EXPLANATIONS */
+        .exp-section { margin-top: 20px; }
+        .exp-title { font-size: 0.7rem; font-weight: 800; color: var(--sub); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+        .exp-item { display: flex; gap: 10px; margin-bottom: 10px; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #e2e8f0; font-size: 0.84rem; line-height: 1.5; }
+        .exp-item.grammar { border-left-color: #f87171; }
+        .exp-item.phrasing { border-left-color: #60a5fa; }
+        .exp-item.vocab { border-left-color: #a78bfa; }
+        .exp-err  { color: var(--red); font-weight: 700; white-space: nowrap; }
+        .exp-arr  { color: #9ca3af; }
+        .exp-fix  { color: var(--blue); font-weight: 700; }
+        .exp-why  { color: #6b7280; font-style: italic; margin-left: 4px; }
+
+        /* TOPIC TEXTAREA */
+        #topicText { min-height: 72px !important; font-size: 0.9rem; margin-bottom: 14px; }
+
+        /* GRADE BUTTON */
+        .btn-grade {
+            padding: 11px 22px; background: var(--purple); color: white; border: none;
+            border-radius: 8px; font-family: inherit; font-weight: 700; font-size: 0.9rem;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.18s;
+        }
+        .btn-grade:hover:not(:disabled) { background: #6d28d9; transform: translateY(-1px); }
+        .btn-grade:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        /* ── BAND SCORE CARD ── */
+        .band-score-section { margin-top: 0; }
+        .band-score-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+        .band-score-title { font-size: 0.85rem; font-weight: 800; color: var(--sub); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+        .overall-wrap { display: flex; align-items: center; gap: 12px; }
+        .overall-label { font-size: 0.72rem; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.8px; }
+        .overall-badge { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.65rem; font-weight: 800; color: white; flex-shrink: 0; box-shadow: 0 4px 14px rgb(0 0 0 / 0.2); }
+        .criteria-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+        .criterion-box { border: 1px solid var(--border); border-radius: 10px; padding: 18px 14px; text-align: center; position: relative; overflow: hidden; background: #fafafa; transition: box-shadow 0.2s; }
+        .criterion-box:hover { box-shadow: 0 4px 12px rgb(0 0 0 / 0.09); }
+        .criterion-box::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 10px 10px 0 0; }
+        .criterion-abbr { font-size: 0.82rem; font-weight: 800; color: var(--text); display: block; margin-bottom: 2px; }
+        .criterion-name { font-size: 0.63rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.7px; color: var(--sub); margin-bottom: 10px; line-height: 1.5; }
+        .crit-band-badge { font-size: 2.2rem; font-weight: 800; line-height: 1; display: block; margin: 6px 0 12px; }
+        .criterion-reason { font-size: 0.75rem; color: #4b5563; line-height: 1.55; text-align: left; }
+
+        /* Band colour palette */
+        .band-color-red    { color: #dc2626; }
+        .band-color-orange { color: #ea580c; }
+        .band-color-amber  { color: #b45309; }
+        .band-color-green  { color: #16a34a; }
+        .band-color-blue   { color: #2563eb; }
+        .band-bg-red    { background: #dc2626; }
+        .band-bg-orange { background: #ea580c; }
+        .band-bg-amber  { background: #b45309; }
+        .band-bg-green  { background: #16a34a; }
+        .band-bg-blue   { background: #2563eb; }
+        .criterion-box.bar-red::before    { background: #dc2626; }
+        .criterion-box.bar-orange::before { background: #ea580c; }
+        .criterion-box.bar-amber::before  { background: #b45309; }
+        .criterion-box.bar-green::before  { background: #16a34a; }
+        .criterion-box.bar-blue::before   { background: #2563eb; }
+
+        .band-summary-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; font-size: 0.88rem; color: #374151; line-height: 1.75; }
+        .band-summary-label { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--sub); margin-bottom: 8px; }
+
+        @media (max-width: 820px) {
+            .criteria-grid { grid-template-columns: repeat(2, 1fr); }
+            .results-area  { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header class="app-header">
+        <img src="https://1drv.ms/i/c/cf90a27d1e2d64dd/IQSj_4BbUuwwTaAK8FBiFwC8AWjhNghEL4u78fASnBpZR9g?width=65&height=74" alt="GG Logo" class="logo-img">
+        <div class="app-title">
+            <h1>GG WRITING ASSISTANT <span class="version-chip">v18.5</span></h1>
+            <div class="sub">Edited by Mr. Nhân &middot; 0984 351 477 &middot; Powered by Claude AI</div>
+        </div>
+        <button type="button" class="key-orb" id="keyOrb" onclick="toggleKeyForm()" title="API key"></button>
+    </header>
+
+    <div class="card">
+        <div class="key-form" id="keyForm">
+            <div class="key-form-label"><i class="fa-solid fa-key"></i> Anthropic API Key</div>
+            <div class="key-form-hint">Stored in <b>this browser only</b> &mdash; never written into this file. Get one at console.anthropic.com.</div>
+            <div class="key-row">
+                <input type="password" id="keyInput" placeholder="sk-ant-api03-&hellip;" autocomplete="off" spellcheck="false">
+                <button type="button" class="key-save" onclick="saveKey()">Save</button>
+            </div>
+            <div class="key-err" id="keyErr"></div>
+        </div>
+
+        <!-- LEVEL SELECTOR -->
+        <div class="tabs-wrap">
+            <div class="tabs-label"><i class="fa-solid fa-layer-group" style="margin-right:6px;"></i> Correction Level</div>
+            <div class="tabs-row">
+                <button class="tab-btn active" id="tab-pre" onclick="setLevel('pre')">
+                    <span class="tab-icon">✏️</span>
+                    <span class="tab-name">Pre-IELTS</span>
+                    <span class="tab-desc">Grammar errors only — keeps student's original words & style</span>
+                </button>
+                <button class="tab-btn" id="tab-core" onclick="setLevel('core')">
+                    <span class="tab-icon">📝</span>
+                    <span class="tab-name">Core IELTS</span>
+                    <span class="tab-desc">Grammar + unnatural phrasing fixed — sounds like real English</span>
+                </button>
+                <button class="tab-btn" id="tab-intensive" onclick="setLevel('intensive')">
+                    <span class="tab-icon">🎯</span>
+                    <span class="tab-name">Intensive IELTS</span>
+                    <span class="tab-desc">Core + selective vocabulary & cohesion upgrades for Band 7+</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- STUDENT NAME -->
+        <div class="controls-row">
+            <div class="control-group" style="max-width:320px;">
+                <div class="field-label"><i class="fa-solid fa-user"></i> Student Name</div>
+                <input type="text" id="studentName" placeholder="Enter student's name...">
+            </div>
+        </div>
+
+        <!-- ESSAY TOPIC (optional — used for IELTS grading) -->
+        <div class="field-label" style="margin-bottom:6px;">
+            <i class="fa-solid fa-circle-question" style="color:var(--purple);"></i> Essay Question / Topic
+            <span style="font-size:0.65rem;color:#9ca3af;font-weight:500;text-transform:none;letter-spacing:0;">&nbsp;(Optional — needed for accurate Task Achievement grading)</span>
+        </div>
+        <textarea id="topicText" placeholder="Paste the IELTS Task 2 question here...&#10;E.g. Some people think that parents should teach children to be good members of society. Others believe that school is the place to learn this. Discuss both views and give your own opinion."></textarea>
+
+        <!-- ESSAY INPUT -->
+        <div class="field-label" style="margin-bottom:6px;"><i class="fa-solid fa-pen-to-square"></i> Student Essay</div>
+        <textarea id="inputText" placeholder="Paste student's essay here...&#10;&#10;The AI will analyse and correct it according to the selected level."></textarea>
+
+        <div class="action-bar">
+            <div class="status-text" id="statusText">
+                <div class="spin"></div>
+                <span id="statusMsg">Ready — select a level and paste the essay.</span>
+            </div>
+            <div class="btn-row">
+                <button class="btn-check" id="runBtn" onclick="runCheck()">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Check Essay
+                </button>
+                <button class="btn-grade" id="gradeBtn" onclick="runGrade()">
+                    <i class="fa-solid fa-chart-bar"></i> Grade IELTS Score
+                </button>
+                <button class="btn-docx" id="downloadBtn" onclick="exportDocx()">
+                    <i class="fa-solid fa-file-word"></i> Download .DOCX
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BAND SCORE SECTION (hidden until graded) -->
+    <div id="bandScoreSection" class="card band-score-section" style="display:none;">
+        <div class="band-score-header">
+            <div class="band-score-title">
+                <i class="fa-solid fa-chart-bar" style="color:var(--purple);"></i>
+                IELTS Task 2 — Band Score Estimate
+            </div>
+            <div class="overall-wrap">
+                <div class="overall-label">Overall</div>
+                <div class="overall-badge" id="overallBadge">--</div>
+            </div>
+        </div>
+        <div class="criteria-grid" id="criteriaGrid"><!-- populated by JS --></div>
+        <div class="band-summary-box">
+            <div class="band-summary-label"><i class="fa-solid fa-comment-dots" style="margin-right:5px;"></i>Nhận xét chung</div>
+            <div id="bandSummaryText">—</div>
+        </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="results-area" id="resultsArea">
+        <div class="result-panel">
+            <div class="panel-header header-err"><i class="fa-solid fa-circle-xmark"></i> Original (Errors Marked)</div>
+            <div id="leftOutput" class="panel-body" style="color:#9ca3af;font-style:italic;">Results will appear here after checking...</div>
+        </div>
+        <div class="result-panel">
+            <div class="panel-header header-corr"><i class="fa-solid fa-circle-check"></i> Corrected Version</div>
+            <div id="rightOutput" class="panel-body" style="color:#9ca3af;font-style:italic;">Results will appear here after checking...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Embedded API key
+    // The API key is NEVER stored in this file. It lives in this browser's
+    // localStorage, so this tool can be shared, hosted or copied safely.
+    var KEY_STORE = 'gg_reading_api_key';
+
+    function getKey() { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } }
+
+    function saveKey() {
+        var v   = document.getElementById('keyInput').value.trim();
+        var err = document.getElementById('keyErr');
+        if (!/^sk-ant-/.test(v)) {
+            err.textContent = 'That does not look like an Anthropic key \u2014 it should start with "sk-ant-".';
+            err.classList.add('show');
+            return;
+        }
+        try { localStorage.setItem(KEY_STORE, v); }
+        catch (e) {
+            err.textContent = 'Could not save \u2014 this browser is blocking local storage.';
+            err.classList.add('show');
+            return;
+        }
+        err.classList.remove('show');
+        document.getElementById('keyInput').value = '';
+        document.getElementById('keyForm').classList.remove('open');
+        refreshKeyBar();
+    }
+
+    function toggleKeyForm() {
+        var f = document.getElementById('keyForm');
+        if (f.classList.contains('open')) { f.classList.remove('open'); return; }
+        f.classList.add('open');
+        document.getElementById('keyInput').focus();
+    }
+
+    function refreshKeyBar() {
+        var has = !!getKey();
+        var orb = document.getElementById('keyOrb');
+        orb.classList.toggle('missing', !has);
+        orb.title = has ? 'API key saved \u00b7 click to change' : 'No API key \u2014 click to add';
+        if (!has) document.getElementById('keyForm').classList.add('open');
+    }
+
+    var currentLevel = 'pre';
+    var currentExplanations = [];
+    var lastCorrected = '';
+    var lastOriginal = '';
+    var currentBandData = null;   // stores latest IELTS band score result
+    var currentDiff = { left: [], right: [] };  // structured tokens: {text, status:'same'|'del'|'ins'}
+
+    // ── LEVEL SELECTION ─────────────────────────────────────────
+    function setLevel(l) {
+        currentLevel = l;
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.getElementById('tab-' + l).classList.add('active');
+        var msgs = {
+            pre: 'Mode: Grammar Only — student\'s vocabulary & style preserved',
+            core: 'Mode: Grammar + Natural Phrasing — unnatural expressions fixed',
+            intensive: 'Mode: Intensive — selective Band 7+ vocabulary & cohesion upgrades'
+        };
+        setStatus(msgs[l], false);
+    }
+
+    function setStatus(msg, loading) {
+        var el = document.getElementById('statusText');
+        document.getElementById('statusMsg').innerText = msg;
+        if (loading) el.classList.add('loading'); else el.classList.remove('loading');
+    }
+
+    // ── JSON SAFETY NET (ported from Reading Generator) ─────────
+    // Repairs the most common breakage: an unescaped " or raw newline
+    // inside a string value (e.g. quotation marks the student wrote).
+    function repairJSON(text) {
+        var out = '', inStr = false, n = text.length;
+        for (var i = 0; i < n; i++) {
+            var ch = text[i];
+            if (!inStr) {
+                if (ch === '"') inStr = true;
+                out += ch;
+                continue;
+            }
+            if (ch === '\\' && i + 1 < n) { out += ch + text[i + 1]; i++; continue; }
+            if (ch === '\n' || ch === '\r') { out += '\\n'; continue; }
+            if (ch === '"') {
+                var j = i + 1;
+                while (j < n && /\s/.test(text[j])) j++;
+                var nextCh = text[j];
+                if (nextCh === undefined || nextCh === ',' || nextCh === '}' || nextCh === ']' || nextCh === ':') {
+                    inStr = false; out += ch;
+                } else {
+                    out += '\\"';
+                }
+                continue;
+            }
+            out += ch;
+        }
+        return out;
+    }
+
+    // ── MARKER PARSERS (v18.5) ──────────────────────────────────
+    // The AI now replies in a plain-text marker format instead of JSON.
+    // Nothing needs escaping, so quotation marks, apostrophes, newlines and
+    // Vietnamese diacritics in student writing can never break the parse.
+
+    function stripFences(raw) {
+        return String(raw || '')
+            .replace(/^```(?:json|text)?\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+    }
+
+    // Pull the text that follows a marker, up to the next marker or the end.
+    function afterMarker(raw, marker) {
+        var i = raw.indexOf(marker);
+        if (i === -1) return null;
+        var rest = raw.substring(i + marker.length);
+        var m = rest.search(/\n?###[A-Z_]+###/);
+        if (m !== -1) rest = rest.substring(0, m);
+        return rest.replace(/^[ \t]*\r?\n?/, '').replace(/\s+$/, '');
+    }
+
+    function parseMarkedCorrection(raw) {
+        raw = stripFences(raw);
+        if (raw.indexOf('###CORRECTED###') === -1) return null;
+
+        var corrected = afterMarker(raw, '###CORRECTED###');
+        if (!corrected) return null;
+
+        var explanations = [];
+        var expBlock = '';
+        var ei = raw.indexOf('###EXPLANATIONS###');
+        if (ei !== -1) {
+            expBlock = raw.substring(ei + '###EXPLANATIONS###'.length);
+            var endI = expBlock.indexOf('###END###');
+            if (endI !== -1) expBlock = expBlock.substring(0, endI);
+        }
+
+        expBlock.split('###ITEM###').forEach(function (chunk) {
+            if (!chunk.trim()) return;
+            var item = { error: '', correction: '', type: '', reason: '' };
+            var current = null;
+            chunk.split(/\r?\n/).forEach(function (line) {
+                var m = line.match(/^\s*(ERROR|CORRECTION|TYPE|REASON)\s*:\s?([\s\S]*)$/);
+                if (m) {
+                    current = m[1].toLowerCase();
+                    item[current] = m[2];
+                } else if (current && line.trim()) {
+                    item[current] += ' ' + line.trim();
+                }
+            });
+            Object.keys(item).forEach(function (k) { item[k] = item[k].trim(); });
+            if (item.error || item.correction) explanations.push(item);
+        });
+
+        return { corrected_text: corrected, explanations: explanations };
+    }
+
+    function parseMarkedGrade(raw) {
+        raw = stripFences(raw);
+        if (raw.indexOf('###TA_BAND###') === -1) return null;
+
+        function num(marker) {
+            var v = afterMarker(raw, marker);
+            if (v === null) return null;
+            var f = parseFloat(String(v).replace(',', '.').match(/-?\d+(\.\d+)?/));
+            return isNaN(f) ? null : f;
+        }
+        function txt(marker) {
+            var v = afterMarker(raw, marker);
+            return v === null ? '' : v.replace(/\s*\n\s*/g, ' ').trim();
+        }
+
+        var data = {
+            task_achievement:           { band: num('###TA_BAND###'),  reason_vi: txt('###TA_REASON###') },
+            coherence_cohesion:         { band: num('###CC_BAND###'),  reason_vi: txt('###CC_REASON###') },
+            lexical_resource:           { band: num('###LR_BAND###'),  reason_vi: txt('###LR_REASON###') },
+            grammatical_range_accuracy: { band: num('###GRA_BAND###'), reason_vi: txt('###GRA_REASON###') },
+            overall:                    num('###OVERALL###'),
+            summary_vi:                 txt('###SUMMARY###')
+        };
+
+        // Recompute overall if the model omitted it or gave a non-half band.
+        var bands = ['task_achievement', 'coherence_cohesion', 'lexical_resource', 'grammatical_range_accuracy']
+            .map(function (k) { return data[k].band; })
+            .filter(function (b) { return typeof b === 'number'; });
+        if (data.overall === null && bands.length === 4) {
+            var avg = bands.reduce(function (a, b) { return a + b; }, 0) / 4;
+            data.overall = Math.round(avg * 2) / 2;
+        }
+        return data;
+    }
+
+    // Legacy JSON path, kept as a fallback if the model ignores the markers.
+    function parseLegacyJSON(raw) {
+        raw = stripFences(raw);
+        var s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+        if (s === -1 || e === -1) return null;
+        var jsonStr = raw.substring(s, e + 1);
+        try { return JSON.parse(jsonStr); }
+        catch (err1) {
+            try { return JSON.parse(repairJSON(jsonStr)); }
+            catch (err2) { return null; }
+        }
+    }
+
+    // ── API CALL with model fallback (Sonnet → Haiku on rate limit) ──
+    async function callModel(model, systemPrompt, userPrompt) {
+        var response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': getKey(),
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true'
+            },
+            body: JSON.stringify({
+                model: model,
+                max_tokens: 16000,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: userPrompt }]
+            })
+        });
+        if (!response.ok) {
+            var errBody = await response.json().catch(function() { return {}; });
+            var msg = errBody.error ? errBody.error.message : 'HTTP ' + response.status;
+            var apiErr = new Error(msg);
+            apiErr.status = response.status;
+            apiErr.errType = errBody.error ? (errBody.error.type || '') : '';
+            throw apiErr;
+        }
+        var result = await response.json();
+        var _blocks = (result.content || []).filter(function (b) { return b.type === 'text' && typeof b.text === 'string'; });
+        return _blocks.map(function (b) { return b.text; }).join('').trim();
+    }
+
+    // ── MAIN CHECK ──────────────────────────────────────────────
+    async function runCheck() {
+        var text = document.getElementById('inputText').value.trim();
+        if (!text) { alert('Please paste a student essay first.'); return; }
+        if (!getKey()) {
+            alert('No API key saved yet. Click the small dot at the top-right of the page to add one.');
+            toggleKeyForm();
+            return;
+        }
+
+        document.getElementById('runBtn').disabled = true;
+        document.getElementById('gradeBtn').disabled = true;
+        document.getElementById('downloadBtn').classList.remove('visible');
+        setStatus('Sending to Claude AI...', true);
+
+        var systemPrompt = buildSystemPrompt();
+        var userPrompt = buildUserPrompt(text);
+
+        try {
+            var raw;
+            try {
+                raw = await callModel('claude-sonnet-5', systemPrompt, userPrompt);
+            } catch (apiErr) {
+                var isRate = apiErr.status === 429 || apiErr.status === 529 ||
+                             /rate|overload/i.test((apiErr.errType || '') + ' ' + (apiErr.message || ''));
+                var isCredit = /credit|billing|insufficient|payment|balance/i.test(apiErr.message || '');
+                if (isRate && !isCredit) {
+                    setStatus('Sonnet is busy — retrying with Haiku...', true);
+                    raw = await callModel('claude-haiku-4-5-20251001', systemPrompt, userPrompt);
+                } else {
+                    throw apiErr;
+                }
+            }
+
+            var data = parseMarkedCorrection(raw) || parseLegacyJSON(raw);
+            if (!data) throw new Error('Could not read the AI response. Please try again.');
+
+            if (!data.corrected_text) throw new Error('No corrected text in response. Please try again.');
+            if (!Array.isArray(data.explanations)) data.explanations = [];
+
+            lastOriginal = text;
+            lastCorrected = data.corrected_text;
+            currentExplanations = data.explanations;
+
+            renderResults(text, data.corrected_text, data.explanations);
+            var realCount = data.explanations.filter(function(ex) { return ex.error !== ex.correction; }).length;
+            setStatus('✓ Done — ' + realCount + ' correction(s) found.', false);
+            document.getElementById('downloadBtn').classList.add('visible');
+
+        } catch (e) {
+            setStatus('Error: ' + e.message, false);
+            alert('Error: ' + e.message);
+        }
+
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('gradeBtn').disabled = false;
+    }
+
+    // ── GRADE IELTS BAND SCORE ───────────────────────────────────
+    async function runGrade() {
+        var essay = document.getElementById('inputText').value.trim();
+        if (!essay) { alert('Please paste a student essay first.'); return; }
+        if (!getKey()) {
+            alert('No API key saved yet. Click the small dot at the top-right of the page to add one.');
+            toggleKeyForm();
+            return;
+        }
+        var topic = document.getElementById('topicText').value.trim();
+
+        document.getElementById('runBtn').disabled = true;
+        document.getElementById('gradeBtn').disabled = true;
+        setStatus('Grading IELTS Band Score...', true);
+
+        try {
+            var raw;
+            try {
+                raw = await callModel('claude-sonnet-5', buildGradeSystemPrompt(), buildGradeUserPrompt(topic, essay));
+            } catch (apiErr) {
+                var isRate = apiErr.status === 429 || apiErr.status === 529 ||
+                             /rate|overload/i.test((apiErr.errType || '') + ' ' + (apiErr.message || ''));
+                var isCredit = /credit|billing|insufficient|payment|balance/i.test(apiErr.message || '');
+                if (isRate && !isCredit) {
+                    setStatus('Sonnet is busy — retrying with Haiku...', true);
+                    raw = await callModel('claude-haiku-4-5-20251001', buildGradeSystemPrompt(), buildGradeUserPrompt(topic, essay));
+                } else { throw apiErr; }
+            }
+
+            var data = parseMarkedGrade(raw) || parseLegacyJSON(raw);
+            if (!data) throw new Error('Could not read the grading response. Please try again.');
+
+            if (!data.task_achievement || !data.coherence_cohesion || !data.lexical_resource || !data.grammatical_range_accuracy) {
+                throw new Error('Missing criteria in grading response.');
+            }
+
+            currentBandData = data;
+            renderBandScore(data);
+            setStatus('✓ Band score estimated — ' + (data.overall || '--') + ' overall.', false);
+
+        } catch (e) {
+            setStatus('Grading error: ' + e.message, false);
+            alert('Grading error: ' + e.message);
+        }
+
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('gradeBtn').disabled = false;
+    }
+
+    function buildGradeSystemPrompt() {
+        return 'You are a certified IELTS examiner with extensive grading experience. ' +
+               'Grade IELTS Task 2 essays strictly according to the official IELTS Task 2 Writing Band Descriptors. ' +
+               'Be realistic and strict — most student essays genuinely earn between 4.5 and 7.0. Never inflate scores. ' +
+               'Always respond in the exact plain-text marker format requested — no JSON, no markdown, no code fences, no extra text. ' +
+               'Never escape quotation marks or apostrophes. Reason lines must be concise (1–2 sentences) in Vietnamese.';
+    }
+
+    function buildGradeUserPrompt(topic, essay) {
+        var taskLine = topic
+            ? 'ESSAY QUESTION:\n"""\n' + topic + '\n"""\n\n'
+            : '(No essay question provided. Grade Task Achievement based on the essay\'s apparent task type and how coherently it addresses it.)\n\n';
+
+        return taskLine +
+            'STUDENT ESSAY:\n"""\n' + essay + '\n"""\n\n' +
+            'Grade this essay strictly on all four official IELTS Task 2 criteria below.\n\n' +
+            '══════════════════════════════════════════════════\n' +
+            'OFFICIAL IELTS TASK 2 BAND DESCRIPTORS\n' +
+            '══════════════════════════════════════════════════\n\n' +
+            '1. TASK ACHIEVEMENT (TA)\n' +
+            'Band 9: Fully addresses all parts; fully developed position; relevant, fully extended and well-supported ideas.\n' +
+            'Band 8: Sufficiently addresses all parts; well-developed response; relevant, extended and supported ideas.\n' +
+            'Band 7: Addresses all parts; clear position throughout; extends/supports main ideas but may overgeneralise or lack focus in supporting detail.\n' +
+            'Band 6: Addresses all parts though some less fully; relevant position but may become unclear or repetitive; relevant main ideas but some inadequately developed.\n' +
+            'Band 5: Addresses task only partially; position not always clear; main ideas limited and not sufficiently developed; may have irrelevant detail.\n' +
+            'Band 4: Responds minimally or tangentially; position unclear; main ideas hard to identify, repetitive or unsupported.\n' +
+            'Band 3: Does not adequately address the task; no clear position; few ideas, largely undeveloped or irrelevant.\n\n' +
+            '2. COHERENCE AND COHESION (CC)\n' +
+            'Band 9: Cohesion attracts no attention; skilfully manages paragraphing.\n' +
+            'Band 8: Sequences ideas logically; manages all aspects of cohesion well; uses paragraphing sufficiently and appropriately.\n' +
+            'Band 7: Logically organises information; clear progression throughout; uses cohesive devices appropriately (may be some under/over-use); clear central topic in each paragraph.\n' +
+            'Band 6: Coherent arrangement with clear overall progression; cohesive devices effective but may be faulty/mechanical; referencing not always clear; paragraphing not always logical.\n' +
+            'Band 5: Some organisation but lacks overall progression; inadequate/inaccurate or overuse of cohesive devices; repetitive due to lack of referencing; paragraphing may be inadequate.\n' +
+            'Band 4: Not arranged coherently; no clear progression; basic cohesive devices (may be inaccurate/repetitive); may not write in paragraphs.\n' +
+            'Band 3: No logical organisation; very limited cohesive devices; no clear logical relationship between ideas.\n\n' +
+            '3. LEXICAL RESOURCE (LR)\n' +
+            'Band 9: Wide vocabulary; very natural and sophisticated control; rare minor errors as slips only.\n' +
+            'Band 8: Wide vocabulary; fluent and flexible for precise meanings; skilfully uses uncommon items (occasional inaccuracies in word choice/collocation); rare spelling/word formation errors.\n' +
+            'Band 7: Sufficient range for flexibility and precision; less common items with some style/collocation awareness; occasional errors in word choice/spelling/word formation.\n' +
+            'Band 6: Adequate range for the task; attempts less common vocabulary with some inaccuracy; some errors in spelling/word formation that do not impede communication.\n' +
+            'Band 5: Limited vocabulary but minimally adequate; noticeable errors in spelling/word formation that may cause some difficulty for the reader.\n' +
+            'Band 4: Basic vocabulary only (may be repetitive or inappropriate); limited control of word formation/spelling; errors may strain the reader.\n' +
+            'Band 3: Very limited range; very limited control of word formation/spelling; errors may severely distort the message.\n\n' +
+            '4. GRAMMATICAL RANGE AND ACCURACY (GRA)\n' +
+            'Band 9: Wide range of structures; full flexibility and accuracy; rare minor errors as slips.\n' +
+            'Band 8: Wide range of structures; majority of sentences error-free; only very occasional errors or inappropriacies.\n' +
+            'Band 7: Variety of complex structures; frequent error-free sentences; good control of grammar and punctuation but may make a few errors.\n' +
+            'Band 6: Mix of simple and complex forms; some errors in grammar and punctuation but they rarely reduce communication.\n' +
+            'Band 5: Limited range of structures; attempts complex sentences but these tend to be less accurate; frequent grammatical errors; punctuation may be faulty; errors can cause difficulty.\n' +
+            'Band 4: Very limited range of structures; only rare subordinate clauses; some accurate structures but errors predominate; punctuation often faulty.\n' +
+            'Band 3: Attempts sentences but errors in grammar and punctuation predominate and distort meaning.\n\n' +
+            '══════════════════════════════════════════════════\n' +
+            'GRADING RULES:\n' +
+            '- Use only whole or half-band scores: 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9\n' +
+            '- overall = average of all 4 criteria, rounded to nearest 0.5\n' +
+            '- Each REASON line: 1–2 sentences in Vietnamese explaining why this specific band was awarded\n' +
+            '- SUMMARY: 2–3 sentences in Vietnamese on key strengths and what most needs improvement\n\n' +
+            '══════════════════════════════════════════════════\n' +
+            'OUTPUT FORMAT — follow this EXACTLY\n' +
+            '══════════════════════════════════════════════════\n' +
+            'Reply in plain text using the markers below. Do NOT use JSON, markdown or code fences.\n' +
+            'Each band marker is followed by a number only. Each reason must be on ONE single line.\n\n' +
+            '###TA_BAND###\n6.5\n' +
+            '###TA_REASON###\n(lý do bằng tiếng Việt)\n' +
+            '###CC_BAND###\n6.0\n' +
+            '###CC_REASON###\n(lý do bằng tiếng Việt)\n' +
+            '###LR_BAND###\n6.0\n' +
+            '###LR_REASON###\n(lý do bằng tiếng Việt)\n' +
+            '###GRA_BAND###\n6.5\n' +
+            '###GRA_REASON###\n(lý do bằng tiếng Việt)\n' +
+            '###OVERALL###\n6.5\n' +
+            '###SUMMARY###\n(nhận xét tổng quát bằng tiếng Việt)\n' +
+            '###END###\n\n' +
+            'Output nothing after ###END###.';
+    }
+
+    // ── RENDER BAND SCORE ────────────────────────────────────────
+    function getBandColor(band) {
+        if (band <= 4.5) return 'red';
+        if (band <= 5.5) return 'orange';
+        if (band <= 6.5) return 'amber';
+        if (band <= 7.5) return 'green';
+        return 'blue';
+    }
+
+    function renderBandScore(data) {
+        var criteria = [
+            { key: 'task_achievement',           abbr: 'TA',  name: 'Task Achievement' },
+            { key: 'coherence_cohesion',         abbr: 'C&C', name: 'Coherence &amp; Cohesion' },
+            { key: 'lexical_resource',           abbr: 'LR',  name: 'Lexical Resource' },
+            { key: 'grammatical_range_accuracy', abbr: 'GRA', name: 'Grammatical Range &amp; Accuracy' }
+        ];
+
+        var overall = data.overall || '--';
+        var overallColor = typeof overall === 'number' ? getBandColor(overall) : 'amber';
+
+        var badge = document.getElementById('overallBadge');
+        badge.textContent = overall;
+        badge.className = 'overall-badge band-bg-' + overallColor;
+
+        var gridHtml = '';
+        criteria.forEach(function(cr) {
+            var crit = data[cr.key] || {};
+            var band = crit.band != null ? crit.band : '--';
+            var reason = crit.reason_vi || '';
+            var color = typeof band === 'number' ? getBandColor(band) : 'amber';
+            gridHtml += '<div class="criterion-box bar-' + color + '">' +
+                '<span class="criterion-abbr">' + cr.abbr + '</span>' +
+                '<div class="criterion-name">' + cr.name + '</div>' +
+                '<span class="crit-band-badge band-color-' + color + '">' + band + '</span>' +
+                '<div class="criterion-reason">' + escHtml(reason) + '</div>' +
+                '</div>';
+        });
+
+        document.getElementById('criteriaGrid').innerHTML = gridHtml;
+        document.getElementById('bandSummaryText').textContent = data.summary_vi || '—';
+
+        var section = document.getElementById('bandScoreSection');
+        section.style.display = 'block';
+        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ── GRAMMAR CHECKER PROMPTS ──────────────────────────────────
+    function buildSystemPrompt() {
+        return 'You are an expert IELTS writing coach helping Vietnamese teachers correct student essays. ' +
+               'Always respond in the exact plain-text marker format requested — no JSON, no markdown, no code fences, no preamble, no closing remarks. ' +
+               'Never escape quotation marks or apostrophes: write them exactly as they appear in the essay. ' +
+               'Corrected text must be in English. Reasons ("reason" field) must be in Vietnamese, under 10 words, clear and direct. ' +
+               'Never add your own opinions or praise. Never rewrite entire paragraphs. Preserve the student\'s arguments and ideas.';
+    }
+
+    function buildUserPrompt(text) {
+        var instructions = {
+            pre: 'LEVEL: Pre-IELTS — Grammar Correction Only.\n' +
+                 'RULES:\n' +
+                 '- Fix ONLY clear grammatical errors: wrong tense, missing/wrong articles (a/an/the), subject-verb agreement, wrong prepositions, spelling mistakes, punctuation errors, singular/plural mistakes.\n' +
+                 '- Do NOT change any vocabulary, word choice, sentence structure, or phrasing — even if it sounds unnatural.\n' +
+                 '- Do NOT reorder words or restructure sentences.\n' +
+                 '- If a sentence is grammatically correct, leave it completely unchanged.\n' +
+                 '- Each explanation must state which grammar rule was violated.',
+
+            core: 'LEVEL: Core IELTS — Grammar + Natural English Phrasing.\n' +
+                  'RULES:\n' +
+                  '- Fix all grammatical errors (same rules as Pre-IELTS level).\n' +
+                  '- ALSO fix phrasing that is grammatically OK but sounds unnatural or non-idiomatic to a native English speaker — for example, awkward word order, wrong collocations, or phrases that are direct translations from Vietnamese.\n' +
+                  '- Do NOT upgrade vocabulary to advanced academic words — keep the student\'s vocabulary level.\n' +
+                  '- Do NOT restructure or rewrite whole sentences unless the meaning is genuinely unclear.\n' +
+                  '- Change the minimum number of words needed to make the sentence sound natural.\n' +
+                  '- Each explanation must clearly state: grammar error OR unnatural phrasing.',
+
+            intensive: 'LEVEL: Intensive IELTS — Grammar + Phrasing + Selective Band 7 Upgrades.\n' +
+                       'RULES:\n' +
+                       '- Fix all grammatical errors and unnatural phrasing (same as Core level).\n' +
+                       '- ADDITIONALLY, make a SMALL number of targeted vocabulary/cohesion upgrades, governed by STRICT LIMITS:\n' +
+                       '  * HARD CAP: across the ENTIRE essay, make at most 1 vocabulary upgrade for every 2 sentences (e.g. a 10-sentence essay gets at most 5 vocabulary upgrades total, not per paragraph).\n' +
+                       '  * Only upgrade a word if it is one of: "good", "bad", "big", "small", "very", "a lot of", "things", "get/got", "nice", "important", "people", or a word the student has repeated 3+ times. Leave every other word exactly as written, even if a fancier synonym exists.\n' +
+                       '  * Transitions: add or improve AT MOST 2 transition words for the WHOLE essay (not per paragraph), and only where the logical connection is genuinely missing or wrong — not just "could be smoother".\n' +
+                       '- Do NOT rewrite, restructure, reorder, split, or merge any sentence. Only swap individual words/short phrases in place.\n' +
+                       '- Do NOT add new clauses, examples, details, or ideas the student did not write.\n' +
+                       '- Do NOT change tense, voice (active/passive), or sentence length as a "style" improvement — only fix genuine errors.\n' +
+                       '- SELF-CHECK before output: count the words you changed for vocabulary/cohesion reasons (separate from grammar/phrasing fixes). If that count exceeds the hard cap above, remove the least important upgrades until you are within the cap.\n' +
+                       '- Aim for natural Band 7.0 quality via small, surgical edits — this should look like Core level with only a handful of extra word swaps, NOT a rewritten essay.\n' +
+                       '- Each explanation must state: grammar / phrasing / vocabulary upgrade / cohesion.'
+        };
+
+        return instructions[currentLevel] + '\n\n' +
+               '══════════════════════════════════════════════════\n' +
+               'OUTPUT FORMAT — follow this EXACTLY\n' +
+               '══════════════════════════════════════════════════\n' +
+               'Reply in plain text using the markers below. Do NOT use JSON. Do NOT use markdown or code fences.\n' +
+               'Write quotation marks, apostrophes and Vietnamese accents normally — never escape anything.\n' +
+               'Each of ERROR / CORRECTION / TYPE / REASON must be on ONE single line.\n' +
+               'TYPE must be exactly one of: grammar, phrasing, vocabulary, cohesion.\n\n' +
+               '###CORRECTED###\n' +
+               '(the full corrected essay here, keeping the student\'s original paragraph breaks)\n' +
+               '###EXPLANATIONS###\n' +
+               '###ITEM###\n' +
+               'ERROR: original phrase\n' +
+               'CORRECTION: corrected phrase\n' +
+               'TYPE: grammar\n' +
+               'REASON: lý do ngắn gọn bằng tiếng Việt\n' +
+               '###ITEM###\n' +
+               'ERROR: another original phrase\n' +
+               'CORRECTION: another corrected phrase\n' +
+               'TYPE: phrasing\n' +
+               'REASON: lý do ngắn gọn bằng tiếng Việt\n' +
+               '###END###\n\n' +
+               'Repeat the ###ITEM### block once per correction. Output nothing after ###END###.\n\n' +
+               'STUDENT ESSAY:\n"""\n' + text + '\n"""';
+    }
+
+    // ── RENDER RESULTS ──────────────────────────────────────────
+    // Normalise line breaks: fixes numbered answers glued onto the previous
+    // sentence (e.g. "...usage time.3.Should the government...").
+    function normText(t) {
+        t = String(t || '').replace(/\r\n?/g, '\n');
+        t = t.replace(/([.!?\u201d"'])[ \t]*(\d{1,2}[ \t]*[.)][ \t]*["'\u201cA-Z])/g, '$1\n$2');
+        t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+        return t.trim();
+    }
+
+    // Merge neighbouring tokens that share a status into single runs, so that
+    // the spaces between consecutive changed words stay inside the run.
+    function mergeTokens(tokens) {
+        var out = [];
+        tokens.forEach(function(t) {
+            var last = out[out.length - 1];
+            if (last && last.status === t.status) last.text += t.text;
+            else out.push({ text: t.text, status: t.status });
+        });
+        return out;
+    }
+
+    function tokensToHtml(tokens, kind) {
+        var style = kind === 'del'
+            ? 'color:#dc2626;font-weight:bold;text-decoration:line-through;background:#fef2f2;'
+            : 'color:#2563eb;font-weight:bold;text-decoration:underline;background:#eff6ff;';
+        return mergeTokens(tokens).map(function(t) {
+            return t.status === 'same' ? escHtml(t.text)
+                 : '<span style="' + style + '">' + escHtml(t.text) + '</span>';
+        }).join('');
+    }
+
+    function renderResults(original, corrected, explanations) {
+        // Simple word-level diff:
+        // LEFT  = original text, wrong words struck through in RED
+        // RIGHT = corrected text, changed words underlined in BLUE
+        original = normText(original);
+        corrected = normText(corrected);
+        var split = function(t) { return t.match(/[\w']+|[^\w\s]|\s+/g) || []; };
+        var w1 = split(original), w2 = split(corrected);
+        var m = w1.length, n = w2.length;
+
+        var dp = [];
+        for (var i = 0; i <= m; i++) { dp[i] = []; for (var j = 0; j <= n; j++) dp[i][j] = 0; }
+        for (var i = 1; i <= m; i++)
+            for (var j = 1; j <= n; j++)
+                dp[i][j] = w1[i-1] === w2[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+
+        var i = m, j = n;
+        var leftTok = [], rightTok = [];
+        // Whitespace tokens are never marked as a change — highlighting them
+        // is what caused words to fuse together ("whichaffects") on export.
+        var mark = function(tok, st) { return /^\s+$/.test(tok) ? 'same' : st; };
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && w1[i-1] === w2[j-1]) {
+                leftTok.push({ text: w1[i-1], status: 'same' });
+                rightTok.push({ text: w2[j-1], status: 'same' });
+                i--; j--;
+            } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+                // Insertion — goes to RIGHT only (blue underline)
+                rightTok.push({ text: w2[j-1], status: mark(w2[j-1], 'ins') });
+                j--;
+            } else {
+                // Deletion — goes to LEFT only (red strikethrough)
+                leftTok.push({ text: w1[i-1], status: mark(w1[i-1], 'del') });
+                i--;
+            }
+        }
+        leftTok.reverse(); rightTok.reverse();
+        currentDiff = { left: mergeTokens(leftTok), right: mergeTokens(rightTok) };
+        var left  = tokensToHtml(leftTok, 'del');
+        var right = tokensToHtml(rightTok, 'ins');
+
+        // Build explanation list
+        var typeColor = { grammar: 'grammar', phrasing: 'phrasing', vocabulary: 'vocab', cohesion: 'vocab' };
+        var typeLabel = { grammar: '📌 Grammar', phrasing: '💬 Phrasing', vocabulary: '📚 Vocabulary', cohesion: '🔗 Cohesion' };
+        var filtered = explanations.filter(function(ex) { return ex.error !== ex.correction; });
+
+        var expHtml = '<div class="exp-section"><div class="exp-title"><i class="fa-solid fa-list-check" style="margin-right:6px;"></i>Detailed Corrections — Sửa chi tiết</div>';
+        filtered.forEach(function(ex) {
+            var t = ex.type || 'grammar';
+            expHtml += '<div class="exp-item ' + (typeColor[t] || 'grammar') + '">' +
+                '<span>' +
+                '<span style="font-size:0.7rem;font-weight:700;color:#9ca3af;display:block;margin-bottom:3px;">' + (typeLabel[t] || '📌 Grammar') + '</span>' +
+                '<span class="exp-err">' + escHtml(ex.error) + '</span>' +
+                ' <span class="exp-arr">→</span> ' +
+                '<span class="exp-fix">' + escHtml(ex.correction) + '</span>' +
+                '<span class="exp-why"> — ' + escHtml(ex.reason) + '</span>' +
+                '</span></div>';
+        });
+        expHtml += '</div>';
+
+        // LEFT panel: original with red strikethroughs + explanation list below
+        document.getElementById('leftOutput').innerHTML  = (left  || '<em style="color:#9ca3af">No differences.</em>') + expHtml;
+        // RIGHT panel: corrected text with blue underlines only — clean, no explanations
+        document.getElementById('rightOutput').innerHTML = right || '<em style="color:#9ca3af">No corrections needed.</em>';
+    }
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ── EXPORT DOCX (real OOXML — OnlyOffice / Word / Google Docs) ──────
+    // v18: builds a genuine .docx instead of HTML-in-a-wrapper. Fixes the
+    // giant-font runs, the lost spaces and the missing list numbering that
+    // OnlyOffice showed with the old html-docx-js export.
+    var GG_FONT = 'Calibri', GG_SIZE = 22;          // 22 half-points = 11pt
+    var GG_GREEN = '1E4620', GG_GOLD = 'B8860B';
+
+    function ggBorder(color) {
+        var d = { style: docx.BorderStyle.SINGLE, size: 4, color: color || 'BFBFBF' };
+        return { top: d, bottom: d, left: d, right: d };
+    }
+
+    // Split a token stream into lines, keeping run-level status information.
+    function tokensToLines(tokens) {
+        var lines = [[]];
+        tokens.forEach(function(seg) {
+            var parts = seg.text.split('\n');
+            parts.forEach(function(p, idx) {
+                if (idx > 0) lines.push([]);
+                if (p !== '') lines[lines.length - 1].push({ text: p, status: seg.status });
+            });
+        });
+        return lines.filter(function(l) {
+            return l.some(function(r) { return r.text.trim() !== ''; });
+        });
+    }
+
+    function lineText(runs) {
+        return runs.map(function(r) { return r.text; }).join('');
+    }
+
+    // Remove the first `len` characters from a line's runs (the manual "2." prefix).
+    function stripChars(runs, len) {
+        var left = len, out = [];
+        runs.forEach(function(r) {
+            if (left <= 0) { out.push(r); return; }
+            if (r.text.length <= left) { left -= r.text.length; return; }
+            out.push({ text: r.text.slice(left), status: r.status });
+            left = 0;
+        });
+        return out;
+    }
+
+    function runsToDocx(runs, kind) {
+        return runs.map(function(r) {
+            var o = { text: r.text, font: GG_FONT, size: GG_SIZE };
+            if (r.status === 'del') {
+                o.color = 'DC2626'; o.bold = true; o.strike = true;
+                o.shading = { type: docx.ShadingType.CLEAR, fill: 'FDECEC' };
+            } else if (r.status === 'ins') {
+                o.color = '2563EB'; o.bold = true;
+                o.underline = { type: docx.UnderlineType.SINGLE, color: '2563EB' };
+                o.shading = { type: docx.ShadingType.CLEAR, fill: 'E8F0FE' };
+            }
+            return new docx.TextRun(o);
+        });
+    }
+
+    // Turn one column of the diff into paragraphs, using Word auto-numbering
+    // when the essay's answers are numbered 1., 2., 3. … in sequence.
+    function buildColumn(tokens, ref) {
+        var lines = tokensToLines(tokens);
+        var NUM_RE = /^\s*(\d{1,2})\s*[.)]\s*/;
+
+        var nums = [], marked = lines.map(function(runs) {
+            var mt = NUM_RE.exec(lineText(runs));
+            if (mt) nums.push(parseInt(mt[1], 10));
+            return mt;
+        });
+
+        // Auto-number only if the detected numbers run consecutively upwards.
+        var auto = nums.length > 0;
+        for (var k = 1; k < nums.length; k++) if (nums[k] !== nums[k-1] + 1) auto = false;
+        var start = auto ? nums[0] : 1;
+
+        var paras = lines.map(function(runs, idx) {
+            var mt = marked[idx];
+            var opts = {
+                spacing: { after: 140, line: 276 },
+                alignment: docx.AlignmentType.JUSTIFIED
+            };
+            if (auto && mt) {
+                runs = stripChars(runs, mt[0].length);
+                opts.numbering = { reference: ref, level: 0 };
+            } else if (auto) {
+                opts.indent = { left: 397 };       // align wrapped body text
+            }
+            opts.children = runsToDocx(runs);
+            return new docx.Paragraph(opts);
+        });
+
+        return { paragraphs: paras.length ? paras : [new docx.Paragraph('')], start: start, auto: auto };
+    }
+
+    function headerCell(text, fill, width) {
+        return new docx.TableCell({
+            width: { size: width, type: docx.WidthType.DXA },
+            shading: { type: docx.ShadingType.CLEAR, fill: fill },
+            margins: { top: 100, bottom: 100, left: 130, right: 130 },
+            borders: ggBorder(),
+            children: [new docx.Paragraph({
+                spacing: { after: 0 },
+                children: [new docx.TextRun({ text: text, bold: true, font: GG_FONT, size: GG_SIZE, color: GG_GREEN })]
+            })]
+        });
+    }
+
+    function bodyCell(paragraphs, width) {
+        return new docx.TableCell({
+            width: { size: width, type: docx.WidthType.DXA },
+            margins: { top: 120, bottom: 120, left: 130, right: 130 },
+            borders: ggBorder(),
+            verticalAlign: docx.VerticalAlign.TOP,
+            children: paragraphs
+        });
+    }
+
+    function exportDocx() {
+        if (typeof docx === 'undefined') {
+            alert('The document library did not load. Check your internet connection and reload the page.');
+            return;
+        }
+        var name = document.getElementById('studentName').value.trim() || 'Student';
+
+        var colL = buildColumn(currentDiff.left,  'ansL');
+        var colR = buildColumn(currentDiff.right, 'ansR');
+
+        var W = 4590;   // twips per column (A4, 2cm margins)
+        var kids = [];
+
+        // Title block
+        kids.push(new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 40 },
+            children: [new docx.TextRun({ text: 'GG LANGUAGES ACADEMY', bold: true, font: GG_FONT, size: 20, color: GG_GOLD, characterSpacing: 30 })]
+        }));
+        kids.push(new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { after: 240 },
+            border: { bottom: { style: docx.BorderStyle.SINGLE, size: 6, color: GG_GOLD, space: 6 } },
+            children: [new docx.TextRun({ text: 'B\u00e0i S\u1eeda \u2014 ' + name, bold: true, font: GG_FONT, size: 32, color: GG_GREEN })]
+        }));
+
+        // Two-column comparison table
+        kids.push(new docx.Table({
+            width: { size: W * 2, type: docx.WidthType.DXA },
+            columnWidths: [W, W],
+            layout: docx.TableLayoutType.FIXED,
+            rows: [
+                new docx.TableRow({
+                    tableHeader: true,
+                    children: [
+                        headerCell('ORIGINAL (Errors Marked)', 'FDECEC', W),
+                        headerCell('CORRECTED VERSION', 'E8F5E9', W)
+                    ]
+                }),
+                new docx.TableRow({
+                    children: [bodyCell(colL.paragraphs, W), bodyCell(colR.paragraphs, W)]
+                })
+            ]
+        }));
+
+        // Detailed corrections — a real auto-numbered list
+        var fixes = currentExplanations.filter(function(ex) { return ex.error !== ex.correction; });
+        if (fixes.length) {
+            kids.push(new docx.Paragraph({
+                spacing: { before: 360, after: 160 },
+                children: [new docx.TextRun({ text: 'Detailed Corrections \u2014 S\u1eeda chi ti\u1ebft', bold: true, font: GG_FONT, size: 26, color: GG_GREEN })]
+            }));
+            fixes.forEach(function(ex) {
+                kids.push(new docx.Paragraph({
+                    numbering: { reference: 'fixes', level: 0 },
+                    spacing: { after: 100, line: 276 },
+                    children: [
+                        new docx.TextRun({ text: ex.error, bold: true, color: 'DC2626', strike: true, font: GG_FONT, size: GG_SIZE }),
+                        new docx.TextRun({ text: '  \u2192  ', font: GG_FONT, size: GG_SIZE, color: '6B7280' }),
+                        new docx.TextRun({ text: ex.correction, bold: true, color: '2563EB', font: GG_FONT, size: GG_SIZE }),
+                        new docx.TextRun({ text: '  \u2014  ' + (ex.reason || ''), italics: true, color: '555555', font: GG_FONT, size: GG_SIZE })
+                    ]
+                }));
+            });
+        }
+
+        // Band score table
+        if (currentBandData) {
+            var bd = currentBandData;
+            var cw = [3300, 900, 4980];
+            var cell = function(children, width, fill, align) {
+                return new docx.TableCell({
+                    width: { size: width, type: docx.WidthType.DXA },
+                    shading: fill ? { type: docx.ShadingType.CLEAR, fill: fill } : undefined,
+                    margins: { top: 100, bottom: 100, left: 130, right: 130 },
+                    borders: ggBorder(),
+                    verticalAlign: docx.VerticalAlign.CENTER,
+                    children: [new docx.Paragraph({ spacing: { after: 0 }, alignment: align || docx.AlignmentType.LEFT, children: children })]
+                });
+            };
+            var t = function(text, opt) {
+                return new docx.TextRun(Object.assign({ text: text, font: GG_FONT, size: GG_SIZE }, opt || {}));
+            };
+            var rows = [new docx.TableRow({
+                tableHeader: true,
+                children: [
+                    cell([t('Ti\u00eau ch\u00ed \u0111\u00e1nh gi\u00e1', { bold: true })], cw[0], 'EDE9FE'),
+                    cell([t('Band', { bold: true })], cw[1], 'EDE9FE', docx.AlignmentType.CENTER),
+                    cell([t('Nh\u1eadn x\u00e9t', { bold: true })], cw[2], 'EDE9FE')
+                ]
+            })];
+            [['Task Achievement (TA)', 'Ho\u00e0n th\u00e0nh nhi\u1ec7m v\u1ee5', bd.task_achievement],
+             ['Coherence & Cohesion (C&C)', 'M\u1ea1ch l\u1ea1c & Li\u00ean k\u1ebft', bd.coherence_cohesion],
+             ['Lexical Resource (LR)', 'Ngu\u1ed3n t\u1eeb v\u1ef1ng', bd.lexical_resource],
+             ['Grammatical Range & Accuracy (GRA)', 'Ng\u1eef ph\u00e1p & \u0110\u1ed9 ch\u00ednh x\u00e1c', bd.grammatical_range_accuracy]
+            ].forEach(function(r) {
+                var cr = r[2] || {};
+                rows.push(new docx.TableRow({ children: [
+                    cell([t(r[0], { bold: true }), new docx.TextRun({ break: 1 }), t('(' + r[1] + ')', { size: 18, color: '555555' })], cw[0]),
+                    cell([t(cr.band != null ? String(cr.band) : '--', { bold: true, size: 30 })], cw[1], null, docx.AlignmentType.CENTER),
+                    cell([t(cr.reason_vi || '', { italics: true })], cw[2])
+                ] }));
+            });
+            rows.push(new docx.TableRow({ children: [
+                cell([t('\u0110i\u1ec3m t\u1ed5ng th\u1ec3 (Overall)', { bold: true })], cw[0], 'F5F3FF'),
+                cell([t(bd.overall != null ? String(bd.overall) : '--', { bold: true, size: 34, color: '7C3AED' })], cw[1], 'F5F3FF', docx.AlignmentType.CENTER),
+                cell([t(bd.summary_vi || '', { italics: true })], cw[2], 'F5F3FF')
+            ] }));
+
+            kids.push(new docx.Paragraph({
+                spacing: { before: 360, after: 160 },
+                children: [new docx.TextRun({ text: 'IELTS Task 2 \u2014 Band Score Estimate', bold: true, font: GG_FONT, size: 26, color: '7C3AED' })]
+            }));
+            kids.push(new docx.Table({
+                width: { size: 9180, type: docx.WidthType.DXA },
+                columnWidths: cw,
+                layout: docx.TableLayoutType.FIXED,
+                rows: rows
+            }));
+        }
+
+        var numLevel = function(ref, start) {
+            return {
+                reference: ref,
+                levels: [{
+                    level: 0, format: docx.LevelFormat.DECIMAL, text: '%1.',
+                    alignment: docx.AlignmentType.LEFT, start: start,
+                    style: { paragraph: { indent: { left: 397, hanging: 397 } } }
+                }]
+            };
+        };
+
+        var doc = new docx.Document({
+            numbering: { config: [numLevel('ansL', colL.start), numLevel('ansR', colR.start), numLevel('fixes', 1)] },
+            styles: { default: { document: { run: { font: GG_FONT, size: GG_SIZE } } } },
+            sections: [{
+                properties: { page: { margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 } } },
+                footers: {
+                    default: new docx.Footer({
+                        children: [new docx.Paragraph({
+                            alignment: docx.AlignmentType.CENTER,
+                            children: [new docx.TextRun({
+                                text: 'GG Languages Academy   |   ',
+                                font: GG_FONT, size: 16, color: '888888'
+                            }), new docx.TextRun({ children: [docx.PageNumber.CURRENT], font: GG_FONT, size: 16, color: '888888' })]
+                        })]
+                    })
+                },
+                children: kids
+            }]
+        });
+
+        docx.Packer.toBlob(doc).then(function(blob) {
+            saveAs(blob, 'Bai sua - ' + name + '.docx');
+        }).catch(function(err) {
+            console.error(err);
+            alert('Could not build the .docx file: ' + err.message);
+        });
+    }
+
+    // Script sits below the markup, so the elements already exist.
+    refreshKeyBar();
+</script>
+</body>
+</html>
