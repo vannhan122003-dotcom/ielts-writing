@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing Assistant v18.9.1 - GG Languages Academy</title>
+    <title>Writing Assistant v19.1 - GG Languages Academy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -57,6 +57,7 @@
                     color: #fff; font-family: inherit; font-weight: 800; font-size: 0.85rem; cursor: pointer; }
         .key-err { color: #dc2626; font-size: 0.76rem; font-weight: 600; margin-top: 9px; display: none; }
         .key-err.show { display: block; }
+        .key-err.success { color: #15803d; }
         .api-status { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: #f0fdf4; border: 1px solid #a5d6a7; border-radius: 8px; margin-bottom: 20px; }
         .api-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(34,197,94,0.2); animation: pulse 2s ease-in-out infinite; }
         @keyframes pulse { 0%,100%{box-shadow:0 0 0 3px rgba(34,197,94,0.2)} 50%{box-shadow:0 0 0 6px rgba(34,197,94,0.06)} }
@@ -135,6 +136,7 @@
         .exp-item.grammar { border-left-color: #f87171; }
         .exp-item.phrasing { border-left-color: #60a5fa; }
         .exp-item.vocab { border-left-color: #a78bfa; }
+        .exp-item.unlisted { border-left-color: #f59e0b; background: #fffbeb; }
         .exp-err  { color: var(--red); font-weight: 700; white-space: nowrap; }
         .exp-arr  { color: #9ca3af; }
         .exp-fix  { color: var(--blue); font-weight: 700; }
@@ -200,7 +202,7 @@
     <header class="app-header">
         <img src="https://1drv.ms/i/c/cf90a27d1e2d64dd/IQSj_4BbUuwwTaAK8FBiFwC8AWjhNghEL4u78fASnBpZR9g?width=65&height=74" alt="GG Logo" class="logo-img">
         <div class="app-title">
-            <h1>GG WRITING ASSISTANT <span class="version-chip">v18.9.1</span></h1>
+            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v19.1</span></h1>
             <div class="sub">Edited by Mr. Nhân &middot; 0984 351 477 &middot; Powered by Claude AI</div>
         </div>
         <button type="button" class="key-orb" id="keyOrb" onclick="toggleKeyForm()" title="API key"></button>
@@ -215,6 +217,32 @@
                 <button type="button" class="key-save" onclick="saveKey()">Save</button>
             </div>
             <div class="key-err" id="keyErr"></div>
+        </div>
+
+        <!-- Hidden local-engine panel — revealed by clicking the version chip 5x. Not linked
+             from anywhere else in the UI on purpose (owner-only fallback, see runbook comment
+             above local-engine JS). -->
+        <div class="key-form" id="localForm" style="border-color:#c4b5fd; background:#f5f3ff;">
+            <div class="key-form-label"><i class="fa-solid fa-microchip"></i> Local Engine (Ollama) — backup when Claude credits run out</div>
+            <div class="key-form-hint">Calls a model running on <b>this computer's</b> Ollama (default <code>localhost:11434</code>) instead of the Claude API. Only works on the machine actually running Ollama — teammates without it installed should leave this off.</div>
+            <div class="key-row" style="flex-wrap:wrap;">
+                <input type="text" id="ollamaUrl" placeholder="http://localhost:11434" style="flex:1 1 220px;">
+                <input type="text" id="ollamaModel" placeholder="glm-5.3:cloud" style="flex:1 1 160px;">
+            </div>
+            <div class="key-row" style="margin-top:8px; align-items:center; gap:8px;">
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer;">
+                    <input type="checkbox" id="ollamaForce"> Always use local engine (skip Claude entirely)
+                </label>
+            </div>
+            <div class="key-row" style="margin-top:4px; align-items:center; gap:8px;">
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer;">
+                    <input type="checkbox" id="ollamaAutoFallback"> Auto-switch to local engine if Claude reports out of credits
+                </label>
+            </div>
+            <div class="key-row" style="margin-top:10px;">
+                <button type="button" class="key-save" onclick="saveOllamaSettings()">Save local engine settings</button>
+            </div>
+            <div class="key-err" id="ollamaErr"></div>
         </div>
 
         <!-- LEVEL SELECTOR -->
@@ -350,6 +378,106 @@
         orb.classList.toggle('missing', !has);
         orb.title = has ? 'API key saved \u00b7 click to change' : 'No API key \u2014 click to add';
         if (!has) document.getElementById('keyForm').classList.add('open');
+    }
+
+    // ── LOCAL ENGINE (Ollama) — owner-only backup for when Claude credits run out ──
+    // Deliberately not exposed anywhere in the normal UI: revealed only by clicking
+    // the version number 5 times within 3 seconds. Settings live in this browser's
+    // localStorage only, same as the Anthropic key.
+    var OLLAMA_STORE = 'gg_local_engine_v1';
+
+    function getOllamaSettings() {
+        try {
+            var raw = localStorage.getItem(OLLAMA_STORE);
+            if (!raw) return { url: '', model: '', force: false, autoFallback: false };
+            var d = JSON.parse(raw);
+            return {
+                url: d.url || '',
+                model: d.model || '',
+                force: !!d.force,
+                autoFallback: !!d.autoFallback
+            };
+        } catch (e) { return { url: '', model: '', force: false, autoFallback: false }; }
+    }
+
+    function saveOllamaSettings() {
+        var url = document.getElementById('ollamaUrl').value.trim().replace(/\/$/, '') || 'http://localhost:11434';
+        var model = document.getElementById('ollamaModel').value.trim() || 'glm-5.3:cloud';
+        var force = document.getElementById('ollamaForce').checked;
+        var autoFallback = document.getElementById('ollamaAutoFallback').checked;
+        var err = document.getElementById('ollamaErr');
+        try {
+            localStorage.setItem(OLLAMA_STORE, JSON.stringify({ url: url, model: model, force: force, autoFallback: autoFallback }));
+            err.textContent = '✓ Saved — ' + model + ' @ ' + url + (force ? ' (forced on)' : autoFallback ? ' (auto-fallback on)' : ' (off unless triggered)');
+            err.classList.remove('show');
+            err.classList.add('show', 'success');
+        } catch (e) {
+            err.classList.remove('success');
+            err.textContent = 'Could not save \u2014 this browser is blocking local storage.';
+            err.classList.add('show');
+        }
+    }
+
+    (function () {
+        var clickTimes = [];
+        document.getElementById('versionChip').addEventListener('click', function () {
+            var now = Date.now();
+            clickTimes.push(now);
+            clickTimes = clickTimes.filter(function (t) { return now - t < 3000; });
+            if (clickTimes.length >= 5) {
+                clickTimes = [];
+                var panel = document.getElementById('localForm');
+                var s = getOllamaSettings();
+                document.getElementById('ollamaUrl').value = s.url || 'http://localhost:11434';
+                document.getElementById('ollamaModel').value = s.model || 'glm-5.3:cloud';
+                document.getElementById('ollamaForce').checked = s.force;
+                document.getElementById('ollamaAutoFallback').checked = s.autoFallback;
+                panel.classList.toggle('open');
+            }
+        });
+    })();
+
+    // Calls a local Ollama server's chat endpoint. Same rough shape as callModel:
+    // returns the plain-text response, throws on failure with a clear message.
+    async function callOllama(systemPrompt, userPrompt) {
+        var s = getOllamaSettings();
+        var url = (s.url || 'http://localhost:11434').replace(/\/$/, '') + '/api/chat';
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function () { controller.abort(); }, 110000);
+        try {
+            var response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: s.model || 'glm-5.3:cloud',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    stream: false
+                }),
+                signal: controller.signal
+            });
+            if (!response.ok) {
+                var t = await response.text().catch(function () { return ''; });
+                throw new Error('Ollama returned HTTP ' + response.status + (t ? (': ' + t.slice(0, 200)) : ''));
+            }
+            var result = await response.json();
+            if (!result.message || typeof result.message.content !== 'string') {
+                throw new Error('Unexpected response shape from Ollama.');
+            }
+            return result.message.content.trim();
+        } catch (e) {
+            if (e.name === 'AbortError') {
+                throw new Error('Local engine request timed out after 110 seconds.');
+            }
+            if (/Failed to fetch/i.test(e.message || '')) {
+                throw new Error('Could not reach Ollama at ' + url + '. Is Ollama running on this machine, and is OLLAMA_ORIGINS set to allow this page?');
+            }
+            throw e;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     }
 
     var currentLevel = 'pre';
@@ -580,12 +708,22 @@
     }
 
     // Shared Sonnet→Haiku fallback used by both Check and Grade. Falls back on
-    // rate-limit/overload AND on a retired/unknown model id (404/not_found_error),
-    // but never on a billing/credit problem, since a different model won't fix that.
-    // Returns { raw, usedModel }.
+    // rate-limit/overload AND on a retired/unknown model id (404/not_found_error).
+    // On a genuine credit/billing exhaustion, falls back to the local Ollama engine
+    // instead — but only if the person has configured and opted into that (see the
+    // hidden local-engine panel). Returns { raw, usedModel }.
     async function callWithFallback(systemPrompt, userPrompt, opts) {
         var primary = 'claude-sonnet-5';
         var fallback = 'claude-haiku-4-5-20251001';
+        var ollama = getOllamaSettings();
+
+        // Manual override: skip Claude entirely and always use the local engine.
+        if (ollama.force && ollama.url && ollama.model) {
+            setStatus('Using local engine (' + ollama.model + ')...', true);
+            var localRaw = await callOllama(systemPrompt, userPrompt);
+            return { raw: localRaw, usedModel: ollama.model + ' (local)' };
+        }
+
         try {
             var raw = await callModel(primary, systemPrompt, userPrompt, opts);
             return { raw: raw, usedModel: primary };
@@ -594,7 +732,16 @@
             var isRateOrDown = apiErr.status === 429 || apiErr.status === 529 ||
                                 /rate|overload/i.test((apiErr.errType || '') + ' ' + (apiErr.message || ''));
             var isModelGone = apiErr.status === 404 || /not_found/i.test(apiErr.errType || '');
-            if (!isCredit && (isRateOrDown || isModelGone)) {
+
+            if (isCredit) {
+                if (ollama.autoFallback && ollama.url && ollama.model) {
+                    setStatus('Claude credits exhausted — switching to local engine (' + ollama.model + ')...', true);
+                    var creditRaw = await callOllama(systemPrompt, userPrompt);
+                    return { raw: creditRaw, usedModel: ollama.model + ' (local, auto-fallback)' };
+                }
+                throw apiErr;
+            }
+            if (isRateOrDown || isModelGone) {
                 setStatus(isModelGone ? 'Primary model unavailable — retrying with Haiku...' : 'Sonnet is busy — retrying with Haiku...', true);
                 var raw2 = await callModel(fallback, systemPrompt, userPrompt, opts);
                 return { raw: raw2, usedModel: fallback };
@@ -616,7 +763,7 @@
         document.getElementById('runBtn').disabled = true;
         document.getElementById('gradeBtn').disabled = true;
         document.getElementById('downloadBtn').classList.remove('visible');
-        setStatus('Sending to Claude AI...', true);
+        setStatus('Sending to AI...', true);
 
         var systemPrompt = buildSystemPrompt();
         var userPrompt = buildUserPrompt(text);
@@ -638,7 +785,8 @@
 
             renderResults(text, data.corrected_text, data.explanations);
             var realCount = data.explanations.filter(function(ex) { return ex.error !== ex.correction; }).length;
-            setStatus('✓ Done — ' + realCount + ' correction(s) found.', false);
+            var engineNote = /\(local/.test(result.usedModel) ? ' [' + result.usedModel + ']' : '';
+            setStatus('✓ Done — ' + realCount + ' correction(s) found.' + engineNote, false);
             document.getElementById('downloadBtn').classList.add('visible');
 
         } catch (e) {
@@ -682,7 +830,10 @@
             currentBandData = data;
             gradeInputHash = hashInputs();
             renderBandScore(data);
-            var modelNote = result.usedModel === 'claude-haiku-4-5-20251001' ? ' (graded with backup model — re-run later for a Sonnet grade if this matters).' : '.';
+            var modelNote = result.usedModel === 'claude-haiku-4-5-20251001'
+                ? ' (graded with backup model — re-run later for a Sonnet grade if this matters).'
+                : /\(local/.test(result.usedModel) ? ' (graded with local engine: ' + result.usedModel + ').'
+                : '.';
             setStatus('✓ Band score estimated — ' + (data.overall || '--') + ' overall' + modelNote, false);
 
         } catch (e) {
@@ -896,6 +1047,10 @@
                '- Subject-verb agreement / tense / singular-plural errors: state the specific rule, e.g. "Chủ ngữ số ít \'it\' cần động từ số ít, và \'cannot\' luôn viết liền".\n' +
                '- Phrasing/naturalness fixes (Core/Intensive levels): explain what a native speaker would find odd about the original construction, not just that it "sounds better" now.\n' +
                '- Keep each reason to 1 sentence (max ~25 words) — specific and rule-based, but still concise enough for a student to read quickly.\n\n' +
+               'COMPLETENESS — every single change needs a matching ###ITEM###:\n' +
+               '- Before outputting, mentally diff your ###CORRECTED### text against the original word-by-word. If you changed ANY word, added or removed ANY article/preposition/punctuation, or reworded ANY phrase — no matter how small — there MUST be a ###ITEM### documenting it. A silent, undocumented fix is a bug: the teacher and student rely on the explanation list to know what changed and why, and an unexplained edit undermines trust in every other explanation you did write.\n' +
+               '- This applies even to fixes made "in passing" while primarily fixing something else nearby (e.g. if fixing a verb tense in a sentence also requires pluralizing a nearby noun, that pluralization needs its OWN ###ITEM### too, not just the verb fix).\n' +
+               '- It is fine to combine two directly-related word changes into one ###ITEM### (e.g. a spelling fix AND a verb-form fix on the same word), but never omit a change entirely because it seems "minor".\n\n' +
                '###CORRECTED###\n' +
                '(the full corrected essay here, keeping the student\'s original paragraph breaks)\n' +
                '###EXPLANATIONS###\n' +
@@ -946,6 +1101,119 @@
         }).join('');
     }
 
+    // Reusable word-level LCS diff — same algorithm as renderResults' main diff,
+    // but callable on any two already-normalised strings.
+    function wordDiffTokens(a, b) {
+        var split = function (t) { return t.match(/[\w']+|[^\w\s]|\s+/g) || []; };
+        var w1 = split(a), w2 = split(b);
+        var m = w1.length, n = w2.length;
+        var dp = [];
+        for (var i = 0; i <= m; i++) { dp[i] = []; for (var j = 0; j <= n; j++) dp[i][j] = 0; }
+        for (var i = 1; i <= m; i++)
+            for (var j = 1; j <= n; j++)
+                dp[i][j] = w1[i-1] === w2[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+        var i = m, j = n, leftTok = [], rightTok = [];
+        var mark = function (tok, st) { return /^\s+$/.test(tok) ? 'same' : st; };
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && w1[i-1] === w2[j-1]) {
+                leftTok.push({ text: w1[i-1], status: 'same' }); rightTok.push({ text: w2[j-1], status: 'same' });
+                i--; j--;
+            } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+                rightTok.push({ text: w2[j-1], status: mark(w2[j-1], 'ins') }); j--;
+            } else {
+                leftTok.push({ text: w1[i-1], status: mark(w1[i-1], 'del') }); i--;
+            }
+        }
+        leftTok.reverse(); rightTok.reverse();
+        return { leftTok: leftTok, rightTok: rightTok };
+    }
+
+    // Groups consecutive non-'same' runs from a word diff into change spans,
+    // merging spans separated only by a short run of untouched text (handles
+    // the diff algorithm occasionally splitting one logical edit into two).
+    function extractChangeSpans(leftTok, rightTok, mergeGapChars) {
+        var spans = [];
+        var li = 0, ri = 0;
+        var gapSinceLastSpan = 0; // accumulated length of untouched text since the last real span
+        while (li < leftTok.length || ri < rightTok.length) {
+            var delText = '';
+            while (li < leftTok.length && leftTok[li].status !== 'same') { delText += leftTok[li].text; li++; }
+            var insText = '';
+            while (ri < rightTok.length && rightTok[ri].status !== 'same') { insText += rightTok[ri].text; ri++; }
+            delText = delText.trim(); insText = insText.trim();
+            if (delText || insText) {
+                var last = spans[spans.length - 1];
+                if (last && gapSinceLastSpan <= (mergeGapChars || 0)) {
+                    last.del += (last.del && delText ? ' ' : '') + delText;
+                    last.ins += (last.ins && insText ? ' ' : '') + insText;
+                } else {
+                    spans.push({ del: delText, ins: insText });
+                }
+                gapSinceLastSpan = 0;
+            }
+            if (li < leftTok.length && leftTok[li].status === 'same') { gapSinceLastSpan += leftTok[li].text.length; li++; }
+            if (ri < rightTok.length && rightTok[ri].status === 'same') ri++;
+        }
+        return spans;
+    }
+
+    // Rebuilds the essay by applying each explanation's error→correction to the
+    // ORIGINAL text, in order. If the explanation list is complete, this should
+    // reconstruct the AI's actual corrected text exactly.
+    function reconstructFromExplanations(original, explanations) {
+        var text = original;
+        var cursor = 0;
+        (explanations || []).forEach(function (e) {
+            var err = e.error || '';
+            if (!err) return;
+            var idx = text.indexOf(err, cursor);
+            if (idx === -1) idx = text.indexOf(err);
+            if (idx === -1) return; // error phrase not found verbatim — a different problem, not ours to fix here
+            text = text.slice(0, idx) + (e.correction || '') + text.slice(idx + err.length);
+            cursor = idx + (e.correction || '').length;
+        });
+        return text;
+    }
+
+    // Finds edits present in the actual corrected text that the explanation list
+    // doesn't account for, and appends a flagged item for each. Diffing the
+    // RECONSTRUCTED text (original + only the listed fixes) against the real
+    // corrected text isolates undocumented changes cleanly — everywhere the
+    // explanations are complete, reconstructed === corrected and there's nothing
+    // to flag, so this doesn't inherit the word-diff's noise on a full essay diff.
+    // This is a code-level backstop independent of which AI engine wrote the
+    // correction (Claude or a local model).
+    // Cosmetic normalisation used only to decide WHICH spans are worth flagging —
+    // unifies quote styles so a straight-vs-curly-quote rewrite (which every
+    // engine does automatically and which never needs its own explanation)
+    // doesn't get mistaken for an undocumented grammar fix.
+    function cosmeticNormalize(s) {
+        return String(s || '')
+            .replace(/[\u2018\u2019]/g, "'")
+            .replace(/[\u201c\u201d]/g, '"');
+    }
+
+    function appendUndocumentedChanges(original, corrected, explanations) {
+        explanations = (explanations || []).slice();
+        var reconstructed = reconstructFromExplanations(original, explanations);
+        if (cosmeticNormalize(reconstructed) === cosmeticNormalize(corrected)) return explanations;
+        var diff = wordDiffTokens(cosmeticNormalize(reconstructed), cosmeticNormalize(corrected));
+        var spans = extractChangeSpans(diff.leftTok, diff.rightTok, 10);
+        spans.forEach(function (span) {
+            // Ignore spans that are purely punctuation/quote-mark noise once letters/digits are stripped.
+            var delCore = span.del.replace(/[^\p{L}\p{N}]/gu, '');
+            var insCore = span.ins.replace(/[^\p{L}\p{N}]/gu, '');
+            if (delCore.length < 2 && insCore.length < 2) return;
+            explanations.push({
+                error: span.del || '(không có — chỉ thêm từ)',
+                correction: span.ins || '(đã xoá, không thay bằng gì)',
+                type: 'unlisted',
+                reason: 'AI đã sửa chỗ này trong bài nhưng không ghi giải thích — thầy/cô vui lòng tự kiểm tra lại tính đúng đắn của thay đổi này.'
+            });
+        });
+        return explanations;
+    }
+
     function renderResults(original, corrected, explanations) {
         // Simple word-level diff:
         // LEFT  = original text, wrong words struck through in RED
@@ -987,9 +1255,16 @@
         var left  = tokensToHtml(leftTok, 'del');
         var right = tokensToHtml(rightTok, 'ins');
 
+        // ── SAFETY NET: catch corrections the AI made in the text but never
+        // documented in its explanation list (the "silent fix" bug). This runs
+        // regardless of which engine produced the text (Claude or a local model),
+        // so neither can slip an undocumented change past the teacher.
+        explanations = appendUndocumentedChanges(original, corrected, explanations);
+        currentExplanations = explanations;
+
         // Build explanation list
-        var typeColor = { grammar: 'grammar', phrasing: 'phrasing', vocabulary: 'vocab', cohesion: 'vocab' };
-        var typeLabel = { grammar: '📌 Grammar', phrasing: '💬 Phrasing', vocabulary: '📚 Vocabulary', cohesion: '🔗 Cohesion' };
+        var typeColor = { grammar: 'grammar', phrasing: 'phrasing', vocabulary: 'vocab', cohesion: 'vocab', unlisted: 'unlisted' };
+        var typeLabel = { grammar: '📌 Grammar', phrasing: '💬 Phrasing', vocabulary: '📚 Vocabulary', cohesion: '🔗 Cohesion', unlisted: '⚠️ Chưa được giải thích' };
         var filtered = explanations.filter(function(ex) { return ex.error !== ex.correction; });
 
         var expHtml = '<div class="exp-section"><div class="exp-title"><i class="fa-solid fa-list-check" style="margin-right:6px;"></i>Detailed Corrections — Sửa chi tiết</div>';
