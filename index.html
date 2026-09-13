@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing Assistant v18.5 - GG Languages Academy</title>
+    <title>Writing Assistant v18.8 - GG Languages Academy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -196,7 +196,7 @@
     <header class="app-header">
         <img src="https://1drv.ms/i/c/cf90a27d1e2d64dd/IQSj_4BbUuwwTaAK8FBiFwC8AWjhNghEL4u78fASnBpZR9g?width=65&height=74" alt="GG Logo" class="logo-img">
         <div class="app-title">
-            <h1>GG WRITING ASSISTANT <span class="version-chip">v18.5</span></h1>
+            <h1>GG WRITING ASSISTANT <span class="version-chip">v18.8</span></h1>
             <div class="sub">Edited by Mr. Nhân &middot; 0984 351 477 &middot; Powered by Claude AI</div>
         </div>
         <button type="button" class="key-orb" id="keyOrb" onclick="toggleKeyForm()" title="API key"></button>
@@ -651,6 +651,7 @@
         return 'You are a certified IELTS examiner with extensive grading experience. ' +
                'Grade IELTS Task 2 essays strictly according to the official IELTS Task 2 Writing Band Descriptors. ' +
                'Be realistic and strict — most student essays genuinely earn between 4.5 and 7.0. Never inflate scores. ' +
+               'The single most common mistake examiners make is awarding a half-band (X.5) out of politeness or habit when the essay\'s actual weaknesses, as described in the examiner\'s own reasoning, only support the whole band below it. Guard against this specifically: the band you assign and the band descriptor matching your own written reason must always agree. ' +
                'Always respond in the exact plain-text marker format requested — no JSON, no markdown, no code fences, no extra text. ' +
                'Never escape quotation marks or apostrophes. Reason lines must be concise (1–2 sentences) in Vietnamese.';
     }
@@ -701,23 +702,40 @@
             '══════════════════════════════════════════════════\n' +
             'GRADING RULES:\n' +
             '- Use only whole or half-band scores: 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9\n' +
-            '- overall = average of all 4 criteria, rounded to nearest 0.5\n' +
+            '- overall = average of the 4 criteria; if the average ends in .25 round UP to the nearest 0.5; if it ends in .75 round UP to the nearest whole band; otherwise round to the nearest 0.5 or whole band (standard IELTS rounding — never round DOWN).\n' +
             '- Each REASON line: 1–2 sentences in Vietnamese explaining why this specific band was awarded\n' +
             '- SUMMARY: 2–3 sentences in Vietnamese on key strengths and what most needs improvement\n\n' +
+            '══════════════════════════════════════════════════\n' +
+            'ANCHORING — AVOID SCORE INFLATION (read carefully, this is the most common grading error):\n' +
+            '══════════════════════════════════════════════════\n' +
+            '- Do NOT default to X.5 "half bands" as a safe middle choice. A half-band (e.g. 6.5) is only justified when the essay clearly clears the descriptor of the band ABOVE the whole band on most points, not merely because it avoids the worst errors of the band below.\n' +
+            '- The X.0 whole band is the correct default for an essay that matches that band\'s descriptor description in general, even if it has some good moments.\n' +
+            '- SELF-CONSISTENCY CHECK (mandatory, do this silently before writing each *_BAND marker): compare the wording you are about to put in the REASON line against the band descriptors above.\n' +
+            '  * If your own REASON uses phrases equivalent to "còn mỏng / chưa phát triển đủ / còn hạn chế / còn máy móc / khá cơ bản / lặp từ / chưa linh hoạt / đôi khi không rõ ràng" — these phrases match the Band 6 descriptor language, NOT Band 6.5 or 7. Assign the band whose OFFICIAL wording matches your reason, not a band above it.\n' +
+            '  * Conversely, if your REASON only describes strengths and minor/rare slips, a higher band is justified.\n' +
+            '  * If you catch yourself writing a critical/limiting REASON but were about to assign a half-band above where that criticism belongs, LOWER the band to match — the descriptor language is the source of truth, not gut feeling.\n' +
+            '- Weigh concrete evidence over general impression: an essay that has repeated errors of the SAME type (e.g. subject-verb agreement mistakes appearing 3+ times) should be graded on the low end of its GRA band, not the high end, since error frequency matters as much as error severity.\n' +
+            '- Most genuine student essays at this level score whole bands (5, 5.5, 6, 6.5) — reserve 7+ for essays with genuinely few, minor errors and natural, flexible language throughout.\n\n' +
+            '══════════════════════════════════════════════════\n' +
+            'INDEPENDENCE CHECK — the 4 criteria must be graded separately, not copied from one overall impression:\n' +
+            '══════════════════════════════════════════════════\n' +
+            '- TA, C&C, LR and GRA assess unrelated things (ideas/argument vs. organisation vs. vocabulary vs. grammar). A real essay is almost always uneven across them — strong in one, weaker in another. Grade each criterion by re-reading the essay with ONLY that criterion\'s descriptor in mind, ignoring your impression from the others.\n' +
+            '- MANDATORY FINAL CHECK before writing any output: look at the 4 band numbers you have drafted. If 3 or 4 of them are the identical number, STOP and re-examine each one individually against its own descriptor and against the essay\'s actual evidence (count and severity of errors specific to that criterion) — do not simply confirm your first instinct. Adjust any criterion that was set by anchoring to the others rather than by its own evidence. It is normal and expected for the 4 bands to differ; identical scores across most criteria should be the exception, not the norm.\n' +
+            '- This check applies to the number itself, not the reasons — do not write near-identical REASON text for different criteria either; each reason must cite evidence specific to that one criterion.\n\n' +
             '══════════════════════════════════════════════════\n' +
             'OUTPUT FORMAT — follow this EXACTLY\n' +
             '══════════════════════════════════════════════════\n' +
             'Reply in plain text using the markers below. Do NOT use JSON, markdown or code fences.\n' +
             'Each band marker is followed by a number only. Each reason must be on ONE single line.\n\n' +
-            '###TA_BAND###\n6.5\n' +
+            '###TA_BAND###\n(band number matching the descriptor, e.g. 5.5)\n' +
             '###TA_REASON###\n(lý do bằng tiếng Việt)\n' +
-            '###CC_BAND###\n6.0\n' +
+            '###CC_BAND###\n(band number matching the descriptor, e.g. 6.0)\n' +
             '###CC_REASON###\n(lý do bằng tiếng Việt)\n' +
-            '###LR_BAND###\n6.0\n' +
+            '###LR_BAND###\n(band number matching the descriptor, e.g. 6.0)\n' +
             '###LR_REASON###\n(lý do bằng tiếng Việt)\n' +
-            '###GRA_BAND###\n6.5\n' +
+            '###GRA_BAND###\n(band number matching the descriptor, e.g. 5.5)\n' +
             '###GRA_REASON###\n(lý do bằng tiếng Việt)\n' +
-            '###OVERALL###\n6.5\n' +
+            '###OVERALL###\n(computed per the rounding rule above)\n' +
             '###SUMMARY###\n(nhận xét tổng quát bằng tiếng Việt)\n' +
             '###END###\n\n' +
             'Output nothing after ###END###.';
@@ -820,6 +838,14 @@
                'Write quotation marks, apostrophes and Vietnamese accents normally — never escape anything.\n' +
                'Each of ERROR / CORRECTION / TYPE / REASON must be on ONE single line.\n' +
                'TYPE must be exactly one of: grammar, phrasing, vocabulary, cohesion.\n\n' +
+               'REASON RULES — the reason must teach the underlying rule, not just label the mistake:\n' +
+               '- NEVER write a bare label like "Thiếu mạo từ" or "Sai giới từ" with nothing else. Always explain WHY, in 1 short Vietnamese sentence (occasional key English grammar term is fine).\n' +
+               '- Article errors (a/an/the/no article): state WHICH article is correct and WHY, using these criteria — "a/an" = lần đầu nhắc đến / mang tính chung chung, chưa xác định cụ thể là cái nào; "the" = danh từ đã được xác định (đã nhắc ở câu trước, chỉ một đối tượng duy nhất, hoặc rõ ràng theo ngữ cảnh); "no article" = danh từ không đếm được hoặc số nhiều mang nghĩa khái quát. Example quality bar: "Thiếu \'a\' vì đây là lần đầu nhắc đến workforce, mang tính chung chung, chưa xác định cụ thể" — NOT just "Thiếu mạo từ a".\n' +
+               '- Collocation/word-choice errors: name the standard collocation/native pairing and why the original combination sounds unnatural, e.g. "\'Approach\' không đi tự nhiên với \'courses\' trong tiếng Anh; cụm chuẩn là \'access a course\'".\n' +
+               '- Preposition errors: state the fixed verb/adjective+preposition pattern being violated, e.g. "\'Contact\' là ngoại động từ, không cần giới từ \'with\' theo sau".\n' +
+               '- Subject-verb agreement / tense / singular-plural errors: state the specific rule, e.g. "Chủ ngữ số ít \'it\' cần động từ số ít, và \'cannot\' luôn viết liền".\n' +
+               '- Phrasing/naturalness fixes (Core/Intensive levels): explain what a native speaker would find odd about the original construction, not just that it "sounds better" now.\n' +
+               '- Keep each reason to 1 sentence (max ~25 words) — specific and rule-based, but still concise enough for a student to read quickly.\n\n' +
                '###CORRECTED###\n' +
                '(the full corrected essay here, keeping the student\'s original paragraph breaks)\n' +
                '###EXPLANATIONS###\n' +
@@ -827,12 +853,12 @@
                'ERROR: original phrase\n' +
                'CORRECTION: corrected phrase\n' +
                'TYPE: grammar\n' +
-               'REASON: lý do ngắn gọn bằng tiếng Việt\n' +
+               'REASON: giải thích cụ thể theo quy tắc, bằng tiếng Việt (xem REASON RULES ở trên)\n' +
                '###ITEM###\n' +
                'ERROR: another original phrase\n' +
                'CORRECTION: another corrected phrase\n' +
                'TYPE: phrasing\n' +
-               'REASON: lý do ngắn gọn bằng tiếng Việt\n' +
+               'REASON: giải thích cụ thể theo quy tắc, bằng tiếng Việt (xem REASON RULES ở trên)\n' +
                '###END###\n\n' +
                'Repeat the ###ITEM### block once per correction. Output nothing after ###END###.\n\n' +
                'STUDENT ESSAY:\n"""\n' + text + '\n"""';
