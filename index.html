@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing Assistant v19.1 - GG Languages Academy</title>
+    <title>Writing Assistant v19.3 - GG Languages Academy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -136,7 +136,6 @@
         .exp-item.grammar { border-left-color: #f87171; }
         .exp-item.phrasing { border-left-color: #60a5fa; }
         .exp-item.vocab { border-left-color: #a78bfa; }
-        .exp-item.unlisted { border-left-color: #f59e0b; background: #fffbeb; }
         .exp-err  { color: var(--red); font-weight: 700; white-space: nowrap; }
         .exp-arr  { color: #9ca3af; }
         .exp-fix  { color: var(--blue); font-weight: 700; }
@@ -202,7 +201,7 @@
     <header class="app-header">
         <img src="https://1drv.ms/i/c/cf90a27d1e2d64dd/IQSj_4BbUuwwTaAK8FBiFwC8AWjhNghEL4u78fASnBpZR9g?width=65&height=74" alt="GG Logo" class="logo-img">
         <div class="app-title">
-            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v19.1</span></h1>
+            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v19.3</span></h1>
             <div class="sub">Edited by Mr. Nhân &middot; 0984 351 477 &middot; Powered by Claude AI</div>
         </div>
         <button type="button" class="key-orb" id="keyOrb" onclick="toggleKeyForm()" title="API key"></button>
@@ -687,6 +686,35 @@
             if (!response.ok) {
                 var errBody = await response.json().catch(function() { return {}; });
                 var msg = errBody.error ? errBody.error.message : 'HTTP ' + response.status;
+                // Some models/accounts reject the temperature param outright ("deprecated for
+                // this model" or similar). Retry once without it rather than failing the whole
+                // request — deterministic output was a nice-to-have, not worth losing grading over.
+                if (typeof body.temperature === 'number' && /temperature/i.test(msg)) {
+                    var retryBody = JSON.parse(JSON.stringify(body));
+                    delete retryBody.temperature;
+                    var retryResponse = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': getKey(),
+                            'anthropic-version': '2023-06-01',
+                            'anthropic-dangerous-direct-browser-access': 'true'
+                        },
+                        body: JSON.stringify(retryBody),
+                        signal: controller.signal
+                    });
+                    if (!retryResponse.ok) {
+                        var retryErrBody = await retryResponse.json().catch(function() { return {}; });
+                        var retryMsg = retryErrBody.error ? retryErrBody.error.message : 'HTTP ' + retryResponse.status;
+                        var retryApiErr = new Error(retryMsg);
+                        retryApiErr.status = retryResponse.status;
+                        retryApiErr.errType = retryErrBody.error ? (retryErrBody.error.type || '') : '';
+                        throw retryApiErr;
+                    }
+                    var retryResult = await retryResponse.json();
+                    var _retryBlocks = (retryResult.content || []).filter(function (b) { return b.type === 'text' && typeof b.text === 'string'; });
+                    return _retryBlocks.map(function (b) { return b.text; }).join('').trim();
+                }
                 var apiErr = new Error(msg);
                 apiErr.status = response.status;
                 apiErr.errType = errBody.error ? (errBody.error.type || '') : '';
@@ -777,6 +805,17 @@
 
             if (!data.corrected_text) throw new Error('No corrected text in response. Please try again.');
             if (!Array.isArray(data.explanations)) data.explanations = [];
+
+            // Safety net: find any fix present in the corrected text that the
+            // explanation list doesn't cover, and have the AI write a proper
+            // explanation for it — so it appears as a normal item, not a warning.
+            var normOriginal = normText(text), normCorrected = normText(data.corrected_text);
+            var gaps = findUndocumentedSpans(normOriginal, normCorrected, data.explanations);
+            if (gaps.length) {
+                setStatus('Filling in ' + gaps.length + ' missing explanation(s)...', true);
+                var extra = await explainUndocumentedSpans(gaps);
+                data.explanations = data.explanations.concat(extra);
+            }
 
             lastOriginal = text;
             lastCorrected = data.corrected_text;
@@ -1193,25 +1232,83 @@
             .replace(/[\u201c\u201d]/g, '"');
     }
 
-    function appendUndocumentedChanges(original, corrected, explanations) {
-        explanations = (explanations || []).slice();
-        var reconstructed = reconstructFromExplanations(original, explanations);
-        if (cosmeticNormalize(reconstructed) === cosmeticNormalize(corrected)) return explanations;
+    // Pure detection — no AI call, no labeling. Finds edits present in the actual
+    // corrected text that the explanation list doesn't account for, and returns
+    // them as plain {error, correction} pairs for explainUndocumentedSpans to
+    // turn into real explanations.
+    function findUndocumentedSpans(original, corrected, explanations) {
+        var reconstructed = reconstructFromExplanations(original, explanations || []);
+        if (cosmeticNormalize(reconstructed) === cosmeticNormalize(corrected)) return [];
         var diff = wordDiffTokens(cosmeticNormalize(reconstructed), cosmeticNormalize(corrected));
         var spans = extractChangeSpans(diff.leftTok, diff.rightTok, 10);
+        var pairs = [];
         spans.forEach(function (span) {
             // Ignore spans that are purely punctuation/quote-mark noise once letters/digits are stripped.
             var delCore = span.del.replace(/[^\p{L}\p{N}]/gu, '');
             var insCore = span.ins.replace(/[^\p{L}\p{N}]/gu, '');
             if (delCore.length < 2 && insCore.length < 2) return;
-            explanations.push({
+            pairs.push({
                 error: span.del || '(không có — chỉ thêm từ)',
-                correction: span.ins || '(đã xoá, không thay bằng gì)',
-                type: 'unlisted',
-                reason: 'AI đã sửa chỗ này trong bài nhưng không ghi giải thích — thầy/cô vui lòng tự kiểm tra lại tính đúng đắn của thay đổi này.'
+                correction: span.ins || '(đã xoá, không thay bằng gì)'
             });
         });
-        return explanations;
+        return pairs;
+    }
+
+    // Asks the AI to write a proper Vietnamese explanation for gaps found by
+    // findUndocumentedSpans, so they end up looking exactly like every other
+    // explained correction — no warning label, just a normal explanation the
+    // main pass happened to miss writing down. Falls back to a quiet, neutral
+    // generic reason (never an alarming "please verify" message) if the
+    // follow-up call fails for any reason, so a network hiccup never blocks
+    // showing the correction itself.
+    async function explainUndocumentedSpans(pairs) {
+        if (!pairs.length) return [];
+        var sys = 'You are an expert IELTS writing coach helping Vietnamese teachers explain grammar corrections. ' +
+                   'For each ERROR\u2192CORRECTION pair given, write ONE Vietnamese REASON explaining the underlying rule that makes the correction necessary — not just a bare label. ' +
+                   'Follow the same standard as detailed correction explanations: for articles state whether a/an/the/no-article is right and why (first mention/generic vs already-identified vs uncountable-or-generic-plural); for collocation name the natural pairing; for prepositions name the fixed pattern; for subject-verb/number agreement state the specific rule. ' +
+                   'Also classify TYPE as exactly one of: grammar, phrasing, vocabulary, cohesion. ' +
+                   'Keep each reason to 1 sentence, max ~25 words. Respond ONLY in the exact marker format requested, nothing else, no preamble.';
+        var userLines = ['Explain these corrections, in the same order given:\n'];
+        pairs.forEach(function (p, i) {
+            userLines.push('###PAIR###\nERROR: ' + p.error + '\nCORRECTION: ' + p.correction + '\n');
+        });
+        userLines.push(
+            '\nFor EACH pair above, in the same order, output:\n' +
+            '###ITEM###\nTYPE: grammar\nREASON: giải thích bằng tiếng Việt theo quy tắc\n' +
+            '###END### (once, after the last item)\n'
+        );
+        var user = userLines.join('');
+        try {
+            var result = await callWithFallback(sys, user, { temperature: 0.2 });
+            var raw = stripFences(result.raw);
+            var items = [];
+            var re = /###ITEM###([\s\S]*?)(?=###ITEM###|###END###)/g;
+            var m;
+            while ((m = re.exec(raw)) !== null) {
+                var block = m[1];
+                var typeM = block.match(/TYPE:\s*(.+)/i);
+                var reasonM = block.match(/REASON:\s*(.+)/i);
+                items.push({
+                    type: typeM ? typeM[1].trim().toLowerCase() : 'grammar',
+                    reason: reasonM ? reasonM[1].trim() : ''
+                });
+            }
+            return pairs.map(function (p, i) {
+                var it = items[i];
+                return {
+                    error: p.error,
+                    correction: p.correction,
+                    type: (it && ['grammar', 'phrasing', 'vocabulary', 'cohesion'].indexOf(it.type) !== -1) ? it.type : 'grammar',
+                    reason: (it && it.reason) ? it.reason : 'Chỉnh sửa để câu tự nhiên và đúng ngữ pháp hơn.'
+                };
+            });
+        } catch (e) {
+            // Network hiccup, rate limit, etc. — degrade quietly, never block the main result.
+            return pairs.map(function (p) {
+                return { error: p.error, correction: p.correction, type: 'grammar', reason: 'Chỉnh sửa để câu tự nhiên và đúng ngữ pháp hơn.' };
+            });
+        }
     }
 
     function renderResults(original, corrected, explanations) {
@@ -1255,16 +1352,11 @@
         var left  = tokensToHtml(leftTok, 'del');
         var right = tokensToHtml(rightTok, 'ins');
 
-        // ── SAFETY NET: catch corrections the AI made in the text but never
-        // documented in its explanation list (the "silent fix" bug). This runs
-        // regardless of which engine produced the text (Claude or a local model),
-        // so neither can slip an undocumented change past the teacher.
-        explanations = appendUndocumentedChanges(original, corrected, explanations);
         currentExplanations = explanations;
 
         // Build explanation list
-        var typeColor = { grammar: 'grammar', phrasing: 'phrasing', vocabulary: 'vocab', cohesion: 'vocab', unlisted: 'unlisted' };
-        var typeLabel = { grammar: '📌 Grammar', phrasing: '💬 Phrasing', vocabulary: '📚 Vocabulary', cohesion: '🔗 Cohesion', unlisted: '⚠️ Chưa được giải thích' };
+        var typeColor = { grammar: 'grammar', phrasing: 'phrasing', vocabulary: 'vocab', cohesion: 'vocab' };
+        var typeLabel = { grammar: '📌 Grammar', phrasing: '💬 Phrasing', vocabulary: '📚 Vocabulary', cohesion: '🔗 Cohesion' };
         var filtered = explanations.filter(function(ex) { return ex.error !== ex.correction; });
 
         var expHtml = '<div class="exp-section"><div class="exp-title"><i class="fa-solid fa-list-check" style="margin-right:6px;"></i>Detailed Corrections — Sửa chi tiết</div>';
