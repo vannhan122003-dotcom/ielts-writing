@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing Assistant v19.3 - GG Languages Academy</title>
+    <title>Writing Assistant v19.7 - GG Languages Academy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -201,7 +201,7 @@
     <header class="app-header">
         <img src="https://1drv.ms/i/c/cf90a27d1e2d64dd/IQSj_4BbUuwwTaAK8FBiFwC8AWjhNghEL4u78fASnBpZR9g?width=65&height=74" alt="GG Logo" class="logo-img">
         <div class="app-title">
-            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v19.3</span></h1>
+            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v19.7</span></h1>
             <div class="sub">Edited by Mr. Nhân &middot; 0984 351 477 &middot; Powered by Claude AI</div>
         </div>
         <button type="button" class="key-orb" id="keyOrb" onclick="toggleKeyForm()" title="API key"></button>
@@ -238,8 +238,9 @@
                     <input type="checkbox" id="ollamaAutoFallback"> Auto-switch to local engine if Claude reports out of credits
                 </label>
             </div>
-            <div class="key-row" style="margin-top:10px;">
+            <div class="key-row" style="margin-top:10px; gap:8px;">
                 <button type="button" class="key-save" onclick="saveOllamaSettings()">Save local engine settings</button>
+                <button type="button" class="key-save" style="background:#6d28d9;" onclick="testOllamaConnection()">Test connection</button>
             </div>
             <div class="key-err" id="ollamaErr"></div>
         </div>
@@ -436,13 +437,106 @@
         });
     })();
 
+    // Diagnoses WHY the local engine can't be reached, instead of leaving the
+    // teacher to guess between "Ollama isn't running", "wrong URL/port",
+    // "CORS/OLLAMA_ORIGINS blocking this page", or "mixed content (https page
+    // calling an http:// local server)" — all four look identical as a bare
+    // "Could not reach Ollama" error from callOllama(). Uses the CURRENT form
+    // values, not the saved ones, so it can be tested before hitting Save.
+    async function testOllamaConnection() {
+        var err = document.getElementById('ollamaErr');
+        var url = (document.getElementById('ollamaUrl').value.trim() || 'http://localhost:11434').replace(/\/$/, '');
+        var wantedModel = document.getElementById('ollamaModel').value.trim() || 'glm-5.3:cloud';
+
+        err.classList.remove('success');
+        err.classList.add('show');
+        err.textContent = '⏳ Testing connection to ' + url + '…';
+
+        // Browsers report window.location.origin as "file://" for a page
+        // opened directly from disk, but the Origin header they actually send
+        // on a fetch from such a page is the literal string "null" — so
+        // OLLAMA_ORIGINS=file:// (matching location.origin) never matches,
+        // while OLLAMA_ORIGINS=null does. Use the value Ollama will actually
+        // see, not the cosmetic one the page reports.
+        var isFileOrigin = window.location.protocol === 'file:';
+        var pageOrigin = isFileOrigin ? 'null' : window.location.origin;
+        var mixedContent = window.location.protocol === 'https:' && /^http:\/\//i.test(url) &&
+            !/^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i.test(url);
+
+        function withTimeout(promise, ms) {
+            return Promise.race([
+                promise,
+                new Promise(function (_, reject) { setTimeout(function () { reject(new Error('timeout')); }, ms); })
+            ]);
+        }
+
+        // Step 1: no-cors probe — this succeeds as soon as ANYTHING answers at
+        // that host:port, even if CORS headers are completely missing, because
+        // the browser never needs to read the (opaque) response body. If this
+        // itself fails, the problem is before CORS: nothing is listening there.
+        var reachable = false;
+        try {
+            await withTimeout(fetch(url + '/', { mode: 'no-cors', cache: 'no-store' }), 5000);
+            reachable = true;
+        } catch (e) { reachable = false; }
+
+        if (!reachable) {
+            var reasons = ['- Ollama is not actually running on this machine right now (an open app window does not always mean the background server started — check with `ollama list` in Terminal).',
+                           '- The URL/port above is wrong (Ollama’s default is exactly ' + '"http://localhost:11434"' + ').'];
+            if (mixedContent) {
+                reasons.push('- This page is loaded over HTTPS (' + pageOrigin + ') but is trying to reach a plain HTTP address (' + url + ') on a non-localhost host — browsers block that automatically ("mixed content"), with no way to allow it from Ollama’s side.');
+            }
+            err.textContent = '✗ Nothing answered at ' + url + '. Most likely:\n' + reasons.join('\n');
+            return;
+        }
+
+        // Step 2: real CORS request. If step 1 succeeded but this fails, the
+        // server IS running and reachable — the browser is specifically
+        // blocking this page's origin, which is exactly what OLLAMA_ORIGINS
+        // controls.
+        var corsOk = false, tagsData = null;
+        try {
+            var res = await withTimeout(fetch(url + '/api/tags', { mode: 'cors', cache: 'no-store' }), 5000);
+            if (res.ok) { corsOk = true; tagsData = await res.json().catch(function () { return null; }); }
+        } catch (e) { corsOk = false; }
+
+        if (!corsOk) {
+            var originNote = isFileOrigin
+                ? 'this page is opened as a local file, so the browser sends Origin: null'
+                : 'this page (' + pageOrigin + ')';
+            err.textContent = '✗ Ollama is running and reachable, but ' + originNote + ' is not allowed to talk to it (CORS). Fix: fully quit Ollama (menu bar icon → Quit, not just closing the window), then start it from Terminal with:\n\n' +
+                'OLLAMA_ORIGINS=' + pageOrigin + ' ollama serve\n\n' +
+                (isFileOrigin ? 'If that literal "null" origin still gets rejected, use OLLAMA_ORIGINS=\'*\' ollama serve instead (allows any origin — fine for a local-only server).\n\n' : '') +
+                'Keep that Terminal window open — closing it stops the server. Then click Test connection again.';
+            return;
+        }
+
+        // Step 3: confirm the requested model is actually installed there.
+        var modelNames = (tagsData && Array.isArray(tagsData.models)) ? tagsData.models.map(function (m) { return m.name; }) : null;
+        var modelFound = modelNames ? modelNames.some(function (n) { return n === wantedModel || n.indexOf(wantedModel) === 0; }) : null;
+
+        err.classList.add('success');
+        if (modelFound === false) {
+            err.classList.remove('success');
+            err.textContent = '✓ Connected to Ollama at ' + url + ', but model "' + wantedModel + '" was not found there. Installed models: ' +
+                (modelNames.length ? modelNames.join(', ') : '(none)') + '. Run: ollama pull ' + wantedModel;
+        } else {
+            err.textContent = '✓ Connected — Ollama at ' + url + ' is reachable and this page is allowed (CORS OK)' +
+                (modelFound === true ? ', and "' + wantedModel + '" is installed.' : '.');
+        }
+    }
+
     // Calls a local Ollama server's chat endpoint. Same rough shape as callModel:
     // returns the plain-text response, throws on failure with a clear message.
     async function callOllama(systemPrompt, userPrompt) {
         var s = getOllamaSettings();
         var url = (s.url || 'http://localhost:11434').replace(/\/$/, '') + '/api/chat';
         var controller = new AbortController();
-        var timeoutId = setTimeout(function () { controller.abort(); }, 110000);
+        // Local/cloud-routed Ollama models are often much slower than Claude's
+        // API for a full essay (no dedicated inference infra, possible cold
+        // start, network hop for a ":cloud" tagged model) — 110s was tuned for
+        // Claude and cuts these off before they finish. Give it much more room.
+        var timeoutId = setTimeout(function () { controller.abort(); }, 300000);
         try {
             var response = await fetch(url, {
                 method: 'POST',
@@ -468,7 +562,7 @@
             return result.message.content.trim();
         } catch (e) {
             if (e.name === 'AbortError') {
-                throw new Error('Local engine request timed out after 110 seconds.');
+                throw new Error('Local engine request timed out after 5 minutes. The model may be overloaded or the essay too long — try again, or try a shorter essay.');
             }
             if (/Failed to fetch/i.test(e.message || '')) {
                 throw new Error('Could not reach Ollama at ' + url + '. Is Ollama running on this machine, and is OLLAMA_ORIGINS set to allow this page?');
@@ -662,7 +756,7 @@
     async function callModel(model, systemPrompt, userPrompt, opts) {
         opts = opts || {};
         var controller = new AbortController();
-        var timeoutId = setTimeout(function () { controller.abort(); }, 110000); // 110s safety timeout
+        var timeoutId = setTimeout(function () { controller.abort(); }, 240000); // 4-minute safety timeout (raised from 110s — long essays / API slowdowns can genuinely take longer)
         var body = {
             model: model,
             max_tokens: 16000,
@@ -725,7 +819,7 @@
             return _blocks.map(function (b) { return b.text; }).join('').trim();
         } catch (e) {
             if (e.name === 'AbortError') {
-                var timeoutErr = new Error('Request timed out after 110 seconds. Please try again.');
+                var timeoutErr = new Error('Request timed out after 4 minutes. Claude may be overloaded right now — please try again.');
                 timeoutErr.status = 0;
                 throw timeoutErr;
             }
