@@ -1002,6 +1002,7 @@
             data = parseFn(result.raw);
         }
         if (!data) throw new Error('Could not read the ' + label + ' response.' + diagSuffix());
+        data.usedModel = result.usedModel;
         return data;
     }
 
@@ -1049,7 +1050,7 @@
 
             renderResults(text, data.corrected_text, data.explanations);
             var realCount = data.explanations.filter(function(ex) { return ex.error !== ex.correction; }).length;
-            var engineNote = /\(local/.test(result.usedModel) ? ' [' + result.usedModel + ']' : '';
+            var engineNote = /\(local/.test(data.usedModel) ? ' [' + data.usedModel + ']' : '';
             setStatus('✓ Done — ' + realCount + ' correction(s) found.' + engineNote, false);
             document.getElementById('downloadBtn').classList.add('visible');
 
@@ -1088,13 +1089,12 @@
                 throw new Error('Missing or unreadable criteria in grading response. Please try again.');
             }
 
-            data.usedModel = result.usedModel;
             currentBandData = data;
             gradeInputHash = hashInputs();
             renderBandScore(data);
-            var modelNote = result.usedModel === 'claude-haiku-4-5-20251001'
+            var modelNote = data.usedModel === 'claude-haiku-4-5-20251001'
                 ? ' (graded with backup model — re-run later for a Sonnet grade if this matters).'
-                : /\(local/.test(result.usedModel) ? ' (graded with local engine: ' + result.usedModel + ').'
+                : /\(local/.test(data.usedModel) ? ' (graded with local engine: ' + data.usedModel + ').'
                 : '.';
             setStatus('✓ Band score estimated — ' + (data.overall || '--') + ' overall' + modelNote, false);
 
