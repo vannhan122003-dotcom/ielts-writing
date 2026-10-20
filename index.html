@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing Assistant v19.5 - GG Languages Academy</title>
+    <title>Writing Assistant v201006 - GG Languages Academy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -201,7 +201,7 @@
     <header class="app-header">
         <img src="https://1drv.ms/i/c/cf90a27d1e2d64dd/IQSj_4BbUuwwTaAK8FBiFwC8AWjhNghEL4u78fASnBpZR9g?width=65&height=74" alt="GG Logo" class="logo-img">
         <div class="app-title">
-            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v19.5</span></h1>
+            <h1>GG WRITING ASSISTANT <span class="version-chip" id="versionChip">v201006</span></h1>
             <div class="sub">Edited by Mr. Nhân &middot; 0984 351 477 &middot; Powered by Claude AI</div>
         </div>
         <button type="button" class="key-orb" id="keyOrb" onclick="toggleKeyForm()" title="API key"></button>
@@ -748,6 +748,27 @@
         }
     }
 
+    // Diagnostics from the most recent callModel, so a parse failure downstream
+    // (raw text didn't contain the expected ###MARKERS###) can report WHY —
+    // e.g. the model stopped at max_tokens before finishing — instead of just
+    // "Could not read the AI response." Always check this after a parse failure.
+    var lastCallDiag = null;
+
+    // Turns lastCallDiag into a short, user-facing suffix explaining WHY parsing
+    // failed, so "Please try again" isn't the only information given.
+    function diagSuffix() {
+        if (!lastCallDiag) return '';
+        var d = lastCallDiag;
+        if (d.stopReason === 'max_tokens') {
+            return ' The response was cut off at the ' + (d.outputTokens || 16000) + '-token limit before it finished (' +
+                   d.model + ') — try a shorter input, or split it into fewer sentences/paragraphs per request.';
+        }
+        if (!d.rawLength) {
+            return ' The model returned no text at all (' + d.model + ') — this usually means a brief network hiccup; try again.';
+        }
+        return ' (' + d.model + ', stop_reason: ' + (d.stopReason || 'unknown') + ', ' + d.rawLength + ' chars back — see browser console for the full response.)';
+    }
+
     // ── API CALL with model fallback (Sonnet → Haiku on rate limit) ──
     // Streamed: the 110s timer re-arms on every chunk received, so a slow-but-
     // still-generating response is never killed just for taking a while overall —
@@ -764,9 +785,15 @@
         }
         armTimeout();
 
+        // 16000 was too low — a long essay plus its full Vietnamese explanation
+        // list can run past that, cutting the response off mid-structure before
+        // it even finishes (stop_reason: max_tokens). 32000 gives real headroom;
+        // if a model ever actually rejects that value outright (vs. just running
+        // into it), the request is retried once at whatever ceiling the API's own
+        // error message states, so this never has to be hand-tuned per model again.
         var body = {
             model: model,
-            max_tokens: 16000,
+            max_tokens: 32000,
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }],
             stream: true
@@ -795,6 +822,8 @@
             var decoder = new TextDecoder();
             var buf = '';
             var text = '';
+            var stopReason = null;
+            var outputTokens = null;
             while (true) {
                 var chunk = await reader.read();
                 if (chunk.done) break;
@@ -811,6 +840,9 @@
                     try { evt = JSON.parse(payload); } catch (parseErr) { continue; }
                     if (evt.type === 'content_block_delta' && evt.delta && evt.delta.type === 'text_delta') {
                         text += evt.delta.text;
+                    } else if (evt.type === 'message_delta') {
+                        if (evt.delta && evt.delta.stop_reason) stopReason = evt.delta.stop_reason;
+                        if (evt.usage && typeof evt.usage.output_tokens === 'number') outputTokens = evt.usage.output_tokens;
                     } else if (evt.type === 'error') {
                         var streamErr = new Error(evt.error && evt.error.message ? evt.error.message : 'Stream error');
                         streamErr.status = 0;
@@ -818,6 +850,15 @@
                     }
                 }
             }
+            lastCallDiag = {
+                model: model,
+                stopReason: stopReason,
+                outputTokens: outputTokens,
+                rawLength: text.length,
+                rawPreview: text.length > 400 ? (text.slice(0, 200) + ' … ' + text.slice(-200)) : text
+            };
+            // eslint-disable-next-line no-console
+            console.log('[GG Writing Assistant] last call diagnostics:', lastCallDiag);
             return text.trim();
         }
 
@@ -826,6 +867,30 @@
             if (!response.ok) {
                 var errBody = await response.json().catch(function() { return {}; });
                 var msg = errBody.error ? errBody.error.message : 'HTTP ' + response.status;
+                // If the requested max_tokens (32000) actually exceeds what this model
+                // allows, the API says so and states the real ceiling in the message
+                // (e.g. "max_tokens: 32000 > 16384, which is the maximum allowed for
+                // claude-..."). Pull that number out and retry once at the model's own
+                // stated limit, instead of a second guessed constant.
+                if (/max_tokens/i.test(msg)) {
+                    var ceilingMatch = msg.match(/>\s*(\d{3,7})/) || msg.match(/(\d{3,7})[^\d]{0,40}maximum/i);
+                    if (ceilingMatch) {
+                        var realCeiling = parseInt(ceilingMatch[1], 10);
+                        var cappedBody = JSON.parse(JSON.stringify(body));
+                        cappedBody.max_tokens = realCeiling;
+                        armTimeout();
+                        var cappedResponse = await doRequest(cappedBody);
+                        if (!cappedResponse.ok) {
+                            var cappedErrBody = await cappedResponse.json().catch(function() { return {}; });
+                            var cappedMsg = cappedErrBody.error ? cappedErrBody.error.message : 'HTTP ' + cappedResponse.status;
+                            var cappedApiErr = new Error(cappedMsg);
+                            cappedApiErr.status = cappedResponse.status;
+                            cappedApiErr.errType = cappedErrBody.error ? (cappedErrBody.error.type || '') : '';
+                            throw cappedApiErr;
+                        }
+                        return await readStream(cappedResponse);
+                    }
+                }
                 // Some models/accounts reject the temperature param outright ("deprecated for
                 // this model" or similar). Retry once without it rather than failing the whole
                 // request — deterministic output was a nice-to-have, not worth losing grading over.
@@ -872,13 +937,12 @@
         var primary = 'claude-sonnet-5';
         var fallback = 'claude-haiku-4-5-20251001';
         var ollama = getOllamaSettings();
-
-        // Manual override: skip Claude entirely and always use the local engine.
-        if (ollama.force && ollama.url && ollama.model) {
-            setStatus('Using local engine (' + ollama.model + ')...', true);
-            var localRaw = await callOllama(systemPrompt, userPrompt);
-            return { raw: localRaw, usedModel: ollama.model + ' (local)' };
-        }
+        // NOTE: the "force local engine, skip Claude entirely" branch that used to
+        // live here has been removed. A stale `force: true` in this browser's
+        // localStorage (left on from earlier testing) was silently routing every
+        // request to Ollama instead of Sonnet, with no visible indicator other than
+        // a one-line status message easy to miss. Claude is now always the primary
+        // call, full stop — no stored setting can skip it again.
 
         // A timeout/AbortError is not an error from the API — the connection just
         // went quiet for 110s (API-side latency, not request size). It deserves one
@@ -924,6 +988,23 @@
         }
     }
 
+    // Runs callWithFallback + the given parser; if parsing fails because the
+    // model's response got cut off mid-structure (stop_reason: max_tokens — on a
+    // short essay this is almost always a one-off repetition/looping glitch, not
+    // something the input actually required), retries the whole call once
+    // automatically before giving up.
+    async function callAndParse(systemPrompt, userPrompt, opts, parseFn, label) {
+        var result = await callWithFallback(systemPrompt, userPrompt, opts);
+        var data = parseFn(result.raw);
+        if (!data && lastCallDiag && lastCallDiag.stopReason === 'max_tokens') {
+            setStatus('Response got cut off mid-way — retrying once...', true);
+            result = await callWithFallback(systemPrompt, userPrompt, opts);
+            data = parseFn(result.raw);
+        }
+        if (!data) throw new Error('Could not read the ' + label + ' response.' + diagSuffix());
+        return data;
+    }
+
     // ── MAIN CHECK ──────────────────────────────────────────────
     async function runCheck() {
         var text = document.getElementById('inputText').value.trim();
@@ -943,11 +1024,9 @@
         var userPrompt = buildUserPrompt(text);
 
         try {
-            var result = await callWithFallback(systemPrompt, userPrompt);
-            var raw = result.raw;
-
-            var data = parseMarkedCorrection(raw) || parseLegacyJSON(raw);
-            if (!data) throw new Error('Could not read the AI response. Please try again.');
+            var data = await callAndParse(systemPrompt, userPrompt, undefined, function (raw) {
+                return parseMarkedCorrection(raw) || parseLegacyJSON(raw);
+            }, 'AI');
 
             if (!data.corrected_text) throw new Error('No corrected text in response. Please try again.');
             if (!Array.isArray(data.explanations)) data.explanations = [];
@@ -999,11 +1078,9 @@
         setStatus('Grading IELTS Band Score...', true);
 
         try {
-            var result = await callWithFallback(buildGradeSystemPrompt(), buildGradeUserPrompt(topic, essay), { temperature: 0.2 });
-            var raw = result.raw;
-
-            var data = parseMarkedGrade(raw) || parseLegacyJSON(raw);
-            if (!data) throw new Error('Could not read the grading response. Please try again.');
+            var data = await callAndParse(buildGradeSystemPrompt(), buildGradeUserPrompt(topic, essay), { temperature: 0.2 }, function (raw) {
+                return parseMarkedGrade(raw) || parseLegacyJSON(raw);
+            }, 'grading');
 
             var crits = ['task_achievement', 'coherence_cohesion', 'lexical_resource', 'grammatical_range_accuracy'];
             var allValid = crits.every(function (k) { return data[k] && data[k].band != null; });
